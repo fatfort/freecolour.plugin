@@ -22,6 +22,7 @@ INSERT {
 		ArkControls.FoldoutGridItem {
 			Layout.fillWidth: true
 			Layout.fillHeight: true
+			Layout.preferredHeight: 140
 			id: colorSelector
 			property int rgbValue: (0xFFFFFFFF)
 
@@ -85,7 +86,7 @@ INSERT {
 
 			Rectangle {
 				anchors.fill: parent
-				color: "transparent"
+				color: "white"
 				border.color: Qt.color("#" + (colorSelector.rgbValue >>> 0).toString(16))
 				border.width: 20
 				antialiasing: root.antialiasing
@@ -95,7 +96,7 @@ INSERT {
 					spacing: 6
 					anchors.top: parent.top
 					anchors.horizontalCenter: parent.horizontalCenter
-					anchors.topMargin: 30
+					anchors.topMargin: 16
 					Repeater {
 						model: colorSelector.recentColors
 						delegate: Rectangle {
@@ -120,9 +121,9 @@ INSERT {
 				TextInput {
 					anchors.bottom: parent.bottom
 					anchors.horizontalCenter: parent.horizontalCenter
-					anchors.bottomMargin: 30
+					anchors.bottomMargin: 16
 					font.pointSize: 28
-					color: colorSelector.selected ? "white" : "black"
+					color: "black"
 					text: ("00000000" + ((colorSelector.rgbValue >>> 0).toString(16).toUpperCase())).slice(-8)
 					inputMask: "HHHHHHHH"
 					onEditingFinished: {
