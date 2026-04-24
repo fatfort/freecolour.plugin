@@ -61,17 +61,29 @@ a chosen `originalToolColor` enum ID with a custom RGB value.
 
 ## Roadmap
 
-1. **v0.1** — substitute one underused colour slot with brown across all tools.
-   Validate end-to-end pipeline (write qmd → push → restart → see brown).
-2. **v0.2** — add a second slot for a different colour, parameterise.
-3. **v0.3** — focus on highlighter (tool 18) since that's the opaque
-   coloring-in use case; restrict the substitution to a slot only that tool
-   uses.
-4. **v1.0** — actual HSV picker UI. Requires injecting a new QML popup
-   into the colour-foldout for highlighter/shader. Significantly more work
-   than the prior versions; will need new identifier hashes added to the
-   hashtab and likely the asivery `qmldiff` tool to compile from
-   plain-name source.
+The user's actual goal is **more slots, not substituted ones**. v0.1 is the
+substitution approach because it's a 60-line clone of an existing extension.
+v1 will be additive (new entries injected into the colour model) and is the
+real target.
+
+1. **v0.1** ✓ — substitute slot 5 (PINK) with brown via the changeGreenColor
+   pattern. Preserves the upstream slot-10 green substitution. Brown is then
+   reachable on highlighter (and shader, where it'll be translucent), at the
+   cost of pink in those palettes. Solid pens that show slot 5 will draw
+   yellow-ish (HIGHLIGHT enum default) when the brown swatch is tapped —
+   known limitation of the enum-9 remap path.
+2. **v0.2** — multi-substitution preset (e.g. PINK→brown, GRAY→tan, GREEN_2→olive)
+   with one knob, still substitutive.
+3. **v1.0** — additive: inject new entries into the colour model so the
+   palette grows from 6/8/9 slots up to 12+, without giving anything up.
+   Requires INSERT into the colorModel ListModel (not just REBUILD), and
+   probably a new column or row in the picker layout. Likely needs new
+   identifier hashes added to the hashtab — i.e. building `asivery/qmldiff`
+   locally to compile plain-name source against a hashtab we generate
+   ourselves from the xochitl QML resources.
+4. **v2.0** — HSV picker popup for highlighter/shader specifically (the
+   tools that honour `color_rgba`). Free-form colour, not just a fixed
+   bigger palette.
 
 ## References
 

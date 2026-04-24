@@ -33,10 +33,13 @@ INSERT TEMPLATE changeColorDefinitionsTemplate {
     newDisplayColor: "#338833"
 }
 
-// Slot 11 → brown (saddle brown #8B4513). New: makes brown reachable for
-// coloring-in via the highlighter/shader.
+// Slot 5 (PINK) → brown (saddle brown #8B4513). PINK is in the
+// highlighter's 6-colour palette (Yellow, Blue, Pink, Orange, Green, Gray)
+// and is the slot the user is willing to sacrifice until the additive
+// colour-wheel UI in v1 replaces this substitution approach with
+// genuinely-new slots.
 INSERT TEMPLATE changeColorDefinitionsTemplate {
-    originalToolColor: 11
+    originalToolColor: 5
     newToolColor: 9
     newToolrgb: (0xFF8B4513)
     newDisplayColor: "#8B4513"
