@@ -1,3 +1,4 @@
 .DS_Store
 *.swp
 build/
+# qmldiff binary builds locally outside this repo; see reference/qmldiff-workflow.md

@@ -90,8 +90,25 @@ cd ~/Documents/remarkable/freeColour.plugin && claude \
 
 ## Status
 
-OPEN — not started yet.
+DONE — 2026-04-24
 
-(When you're done, append a "DONE — <date>" header and a short
-summary of what you produced + any gotchas under it. Master will
-read this on next invocation.)
+### What's in place
+
+- **qmldiff binary built locally.** Source at `~/src/qmldiff`, built with stock rustup (`cargo 1.94.1`, `rustc 1.94.1`, target `aarch64-apple-darwin`). Upstream commit `533d2b9ceac41d2952d92090eed37298cd627440` (tip of `master` on 2026-04-24). Binary at `~/src/qmldiff/target/release/qmldiff`. Not committed to this repo — rebuild with `cd ~/src/qmldiff && cargo build --release --bin qmldiff`.
+- **Round-trip verified against `reference/hashtab`.** Decompiled `reference/changeGreenColor.qmd` with `qmldiff hash-diffs -r` → saved as `reference/changeGreenColor.qml-diff` (plain-name source). Recompiled via the wrapper → byte-identical to the original `.qmd` (`diff` returns 0, both 62 lines).
+- **`bin/compile-qmd.sh`** — wrapper that takes `src/foo.qml-diff` and emits `build/foo.qmd` against `reference/hashtab`. Resolves the qmldiff binary via `$QMLDIFF` env, then `~/src/qmldiff/target/release/qmldiff`, then `$PATH`. Input/output contract documented at the top of the script.
+- **`reference/qmldiff-workflow.md`** — full author→compile→install loop, how to extend the hashtab, and a realistic survey of what it would take to dump live QML off the device (there is no built-in debug-dump mode in qt-resource-rebuilder; cheapest honest path is a ~30-line patch to `qt-resource-rebuilder/src/main.c` to fwrite each processed file before calling `qmldiff_process_file`).
+- **`build/`** ignored via `.gitignore` (compiled artefacts shouldn't land in source control; they depend on local hashtab + qmldiff versions).
+
+### Gotchas for the next slave / master to know
+
+- `qmldiff hash-diffs` **mutates its input file in place**. The wrapper copies the plain source into `build/` before hashing, so don't bypass it and run `qmldiff hash-diffs` against something under `src/` or `reference/` directly — you will lose your plain source.
+- qmldiff's `Cargo.toml` only declares `crate-type = ["staticlib"]` (no `[[bin]]`), but `src/main.rs` is a real CLI. `cargo build` builds it anyway; use `--bin qmldiff` to be explicit.
+- The hashtab at `reference/hashtab` holds 20 017 total entries, only 1 353 of which reverse-resolve to plain names (see `qmldiff dump-hashtab | wc -l`). `hash-diffs` leaves identifiers not present in the hashtab unhashed — if a diff compiles but contains plain names xochitl can't resolve, the runtime match will silently fail. When writing v1, sanity-check every new identifier with `qmldiff hash-string X` + `grep` against the dump before relying on it.
+- File-extension convention I've adopted: `.qml-diff` for plain-name sources, `.qmd` for hashed device-ready artefacts. Upstream uses `.qmd` for both, which is confusing. `compile-qmd.sh` tolerates either suffix on the input but always emits `.qmd` in `build/`.
+- Filenames ending in `.qml` are themselves identifiers in the hashtab (e.g. `WritingTool.qml = 14050541169674265603`), so `hash-diffs` will correctly hash `AFFECT /qt/qml/.../WritingTool.qml` paths — no special handling required.
+
+### What's NOT done (deliberately, per the brief)
+
+- No live-device QML dump. The README of `qt-resource-rebuilder` has no debug-dump flag; the approaches for getting actual `WritingTool.qml` contents off the tablet are documented in `reference/qmldiff-workflow.md` §"Dumping live QML from the device" for SLAVE-WRITINGTOOL to pick one.
+- Makefile wiring to the new flow. `Makefile`'s `EXT` still points at `src/freeColour.qmd`. When v1 is authored as `src/freeColour.qml-diff`, either update `EXT` to `build/freeColour.qmd` + add a compile rule, or keep `src/freeColour.qmd` as the canonical committed output and call the wrapper as a pre-commit step. Master decides.

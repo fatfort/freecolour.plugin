@@ -1,0 +1,62 @@
+SLOT changeColorDefinitionsSlot
+INSERT TEMPLATE changeColorDefinitionsTemplate {
+    originalToolColor: 10
+    newToolColor: 9
+    newToolrgb: (0xFF338833)
+    newDisplayColor: "#338833"
+}
+END SLOT
+AFFECT /qt/qml/xofm/libs/toolbar/qml/WritingTool.qml
+TRAVERSE ?#root
+REPLACE ensureSelection WITH {
+    function ensureSelection()
+    {
+        if (!toolModel.isValidTool(root.pen.tool)) {
+            root.penToolSelected(toolModel.defaultTool());
+        }
+        if (!root.pen.toolColor === 9 && !colorModel.isValidColor(root.pen.color, root.pen.colorCode)) {
+            root.penColorSelected(colorModel.defaultRgbCode(), colorModel.defaultColorEnum());
+        }
+        if (!thicknessModel.isValidThickness(root.pen.thickness)) {
+            root.penThicknessSelected(thicknessModel.defaultThickness());
+        }
+    }
+}
+END TRAVERSE
+TRAVERSE ?#indicator
+REBUILD bodyColor
+LOCATE BEFORE ALL
+INSERT { root.pen.color === 9 ? Qt.color("#" + root.pen.colorCode.toString(16)) : } 
+END REBUILD
+REBUILD borderWidth
+LOCATE BEFORE ALL
+INSERT { outlineColor != "transparent" ? 2 : } 
+END REBUILD
+END TRAVERSE
+TRAVERSE ?#colorComponent
+LOCATE AFTER ALL
+INSERT {
+property bool initialized: false
+    Timer {
+        interval: 0
+        running: true
+        repeat: false
+        onTriggered: {
+            if (!initialized) {
+
+				~{changeColorDefinitionsSlot}~
+
+                initialized = true;	
+            }
+        }
+    }
+}
+END TRAVERSE
+END AFFECT
+TEMPLATE changeColorDefinitionsTemplate {
+		if (toolColor === ~{originalToolColor}~ ) {
+			toolColor = ~{newToolColor}~;
+			rgb = ~{newToolrgb}~;
+			displayColor = ~{newDisplayColor}~;
+		}
+}

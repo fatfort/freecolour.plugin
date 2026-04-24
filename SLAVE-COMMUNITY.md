@@ -106,4 +106,119 @@ If a section has nothing, write "Nothing found." rather than padding.
 
 ## Status
 
-OPEN — not started yet.
+DONE — 2026-04-24. Bottom line: **a working free-RGB colour-picker
+extension for 3.26 on rMPP + rMPP Move already exists** in
+`ingatellent/xovi-qmd-extensions`. This collapses v1 from "reverse-
+engineer the QML and build from scratch" to "install/adapt ingatellent's
+files, reconcile with our brown-colour goal, and ship." MASTER should
+re-brief SLAVE-WRITINGTOOL to study ingatellent's qmd rather than dump
+xochitl from zero.
+
+### 1. Working alternatives found
+
+**`ingatellent/xovi-qmd-extensions` — the 3.26 rewrite of changeGreenColor + a new colour-picker UI.**
+
+- [3.26/addColorSelector.qmd](https://github.com/ingatellent/xovi-qmd-extensions/blob/main/3.26/addColorSelector.qmd)
+  — adds a "Pick custom color" menu item with a text field that takes
+  a hex ARGB value (e.g. `FF338833`) and a colour-swatch preview. On
+  accept, calls the xochitl internal `penColorSelected(rgbValue, ARGB)`
+  signal — the same injection point MASTER.md flagged as unknown. First
+  committed 2026-04-04, "Change any pen to any color (using hex ARGB
+  value)".
+- [3.26/changeGreenColor.qmd](https://github.com/ingatellent/xovi-qmd-extensions/blob/main/3.26/changeGreenColor.qmd)
+  — **prerequisite** for the picker (per the author's comment in
+  issue #12: "Must be installed with changeGreenColor.qmd for the
+  color assignment not to be overruled"). First committed 2026-03-18,
+  corrected 2026-03-19 with "Using correct hashtab for 3.26".
+- Structurally different from FouzR's v1 — uses a `SLOT` /
+  `TEMPLATE` macro (the `changeColorDefinitionsSlot` /
+  `changeColorDefinitionsTemplate` pair), a `REPLACE`
+  on function `[[4129553690040935969]]` (the colour-select handler),
+  and two `REBUILD` inserts on `[[254524038664609014]]` and
+  `[[475535838851480711]]`. Our v0.1 clone of FouzR's file uses the
+  pre-3.26 Timer-substitution pattern which no longer matches the
+  current QML.
+- Confirmed working by author + one other tester ("knox-dawson") on
+  both rMPP and rMPP Move, with screenshots, in
+  [issue #12 "Any color, any pen"](https://github.com/ingatellent/xovi-qmd-extensions/issues/12).
+  Quote: "It work as expected. I'm amazed. […] So any pen can be a
+  shader" (on passing a non-opaque alpha through ARGB).
+
+**`ingatellent/xovi-qmd-extensions/3.26/enableAllColors.qmd`** is NOT
+what we want — it's a 4-line patch that unhides the rMPP palette on
+greyscale rM1/rM2, not a new-colour mechanism on rMPP.
+
+### 2. Why-changeGreenColor-broke leads
+
+No single bug ticket nails it, but the *diff* between the top-level
+`changeGreenColor.qmd` (what FouzR ships, what we cloned) and
+`3.26/changeGreenColor.qmd` is the diagnosis:
+
+- In 3.26 the colour-select logic was refactored into function hash
+  `[[4129553690040935969]]`. The old Timer-based approach writes to
+  properties that colorModel rebinds on the next tick; the 3.26
+  rewrite instead **replaces the function itself** and adds a one-shot
+  init `Timer` on hash `[[7060683329257607547]]` that seeds the
+  swatch with the ARGB override.
+- The 3.26 file also rebuilds two expression hashes
+  (`[[254524038664609014]]`, `[[475535838851480711]]`) so that when
+  `PenColor === 9` (ARGB) the swatch renders the hex colour instead
+  of falling through to the default enum-indexed colour.
+- FouzR's upstream ships only the pre-3.26 file; no update. FouzR
+  acknowledged the ask in [FouzR/xovi-extensions#47 "Any color"](https://github.com/FouzR/xovi-extensions/issues/47)
+  (closed 2026-04-09) and said: *"Cool, but I'm not so sure if I want
+  to go for a colour wheel any time soon"* — pointing users instead
+  to ingatellent's fork. So FouzR's version isn't broken on purpose,
+  it's just unmaintained for the 3.26 QML shape.
+- `asivery/rm-xovi-extensions` [release v17-14012026](https://github.com/asivery/rm-xovi-extensions/releases/tag/v17-14012026)
+  is the qt-resource-rebuilder build referenced by multiple 3.26
+  troubleshooting threads (e.g. FouzR #43) — worth confirming the
+  device has ≥ v17 before blaming the .qmd.
+
+### 3. Adjacent work worth knowing
+
+- **[FouzR/rm-hacks-qmd](https://github.com/FouzR/rm-hacks-qmd)** — a
+  separate extension collection (continuation of
+  [mb1986/rm-hacks](https://github.com/mb1986/rm-hacks) in qmldiff
+  form). Currently at 0.0.11-pre4. Does NOT ship a colour picker.
+  Relevant only as a second worked example of the SLOT/TEMPLATE
+  pattern if we need reference code.
+- **`vellum-dev/vellum`** has a `packages/change-green-color`
+  VELBUILD — it's just a packaging recipe wrapping FouzR's file, not
+  a different mechanism.
+- **`rehackable/awesome-reMarkable`** index lists ingatellent's repo
+  but only enumerates `delayStrokeRefresh` / `enableAllColors` —
+  `addColorSelector` hasn't been added to the index yet (it's only
+  3 weeks old). Confirms no other fork is doing colour work.
+- **`Samarkin/rm-hacks-xovi-qmd`** stops at 3.25, no colour files.
+- **`PepikVaio/reMarkable_Xovi_Extensions`** has no colour extensions.
+- **Nilorea Studio 2025-08-11 post** ([link](https://www.nilorea.net/2025/08/11/latest-rmhacks-with-xovi-for-remarkable-1-2-paper-pro/))
+  is an install walkthrough for rmHacks + xovi, no colour content.
+- ingatellent's author in issue #12 notes the long-press-grey UI idea
+  ("Long press the gray color, to reveal four sliders") as a future
+  direction — we could borrow this if we want in-tool colour editing
+  rather than the hex-typing UX they shipped.
+- One side-effect worth knowing per knox-dawson's test: "any pen can
+  be a shader" — passing non-opaque alpha via ARGB (enum 9) makes
+  solid-pen tools honour transparency, which conflicts with
+  MASTER.md's proven #2 ("solid pens ignore color_rgba"). Possible
+  reconciliation: once the pen is re-tagged as ARGB via the new
+  function path, the rasterizer reads RGBA even on ballpoint. Worth
+  re-testing on device after we install ingatellent's files.
+
+### Recommended next step for MASTER
+
+1. Re-brief SLAVE-WRITINGTOOL to read ingatellent's two 3.26 .qmds
+   line-by-line (hashes + structure) rather than dumping xochitl from
+   scratch. The injection points are handed to us.
+2. `make reinstall` swapping our `src/freeColour.qmd` for
+   `ingatellent/3.26/changeGreenColor.qmd` + `3.26/addColorSelector.qmd`
+   (MIT licensed per their LICENSE.md — attribution carries over).
+   Verify the picker UI shows up, pick `0xFF8B4513` (brown), draw a
+   stroke, sync, decode with rmscene, confirm `color_rgba` is set and
+   renders brown.
+3. If step 2 works, v1 of freeColour.qmd = ingatellent's files
+   possibly stripped to a single-preset brown-only variant (no UI)
+   for the coloring-in use case, with full-picker kept as a bonus.
+4. Close SLAVE-QMLDIFF as no-longer-blocking (we still benefit from
+   the toolchain for future patches, but not load-bearing for v1).
