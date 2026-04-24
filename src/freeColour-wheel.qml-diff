@@ -1,0 +1,320 @@
+;LOAD changeGreenColor.qmd
+;
+;freeColour v2.0: HSV colour wheel picker.
+;  Recents row (v1.2) stays at top. Below it: a Canvas-painted hue ring
+;  with an inscribed S/V square. Finger drag on the ring sets hue; drag
+;  in the square sets saturation/value. On release we write the RGB to
+;  /home/root/.freeColour-recent.json and call
+;  root.penColorSelected(argb, Line.ArgbCode). Hex TextInput replaced.
+;
+;Compile via bin/compile-qmd.sh; install via the project Makefile.
+
+AFFECT /qt/qml/xofm/libs/toolbar/qml/WritingTool.qml
+TRAVERSE ?#root
+LOCATE BEFORE ColorGrid
+INSERT {
+	component CustomColorSelector: ArkControls.FoldoutGrid {
+		columns: 1
+		Layout.fillWidth: true
+		Layout.fillHeight: true
+		ArkControls.FoldoutGridItem {
+			Layout.fillWidth: true
+			Layout.fillHeight: true
+			Layout.preferredHeight: 340
+			id: colorSelector
+			property int rgbValue: (0xFFFFFFFF)
+
+			property var recentColors: [
+				0xFF8B4513, 0xFFD2B48C, 0xFFFA8072, 0xFFFF7F50,
+				0xFF87CEEB, 0xFF4B0082, 0xFF808000, 0xFF008080
+			]
+
+			function loadRecent() {
+				var xhr = new XMLHttpRequest();
+				try {
+					xhr.open("GET", "file:///home/root/.freeColour-recent.json", false);
+					xhr.send();
+					if (xhr.responseText) {
+						var d = JSON.parse(xhr.responseText);
+						if (d.recent && d.recent.length > 0) {
+							recentColors = d.recent;
+						}
+					}
+				} catch (e) {}
+			}
+
+			function saveRecent() {
+				var xhr = new XMLHttpRequest();
+				try {
+					xhr.open("PUT", "file:///home/root/.freeColour-recent.json");
+					xhr.send(JSON.stringify({recent: recentColors}));
+				} catch (e) {}
+			}
+
+			function recordPick(rgb) {
+				var n = [rgb];
+				for (var i = 0; i < recentColors.length; ++i) {
+					if (recentColors[i] !== rgb && n.length < 8) {
+						n.push(recentColors[i]);
+					}
+				}
+				recentColors = n;
+				saveRecent();
+			}
+
+			function argbFromHSV(h, s, v) {
+				var c = Qt.hsva(h, s, v, 1);
+				var r = Math.round(c.r * 255) & 0xFF;
+				var g = Math.round(c.g * 255) & 0xFF;
+				var b = Math.round(c.b * 255) & 0xFF;
+				return (0xFF000000 | (r << 16) | (g << 8) | b) >>> 0;
+			}
+
+			Component.onCompleted: {
+				contentItem.spacing = 8;
+				loadRecent();
+			}
+
+			focusPolicy: Qt.NoFocus
+			selected: {
+				if (root.pen.color !== Line.ArgbCode) {
+					return false;
+				}
+				return (rgbValue >>> 0) === (root.pen.colorCode >>> 0);
+			}
+			onPressed: root.penColorSelected(rgbValue, Line.ArgbCode)
+			Epaper.ScreenModeItem {
+				anchors.fill: parent
+				visible: !EPFramebuffer.hasCapability(EPFramebuffer.Capability.Color)
+				mode: Epaper.ScreenModeItem.Mono
+				objectName: "pen-mono-dither"
+			}
+
+			Rectangle {
+				anchors.fill: parent
+				color: "white"
+				border.color: Qt.color("#" + (colorSelector.rgbValue >>> 0).toString(16))
+				border.width: 20
+				antialiasing: root.antialiasing
+
+				Row {
+					id: presetRow
+					spacing: 6
+					anchors.top: parent.top
+					anchors.horizontalCenter: parent.horizontalCenter
+					anchors.topMargin: 16
+					Repeater {
+						model: colorSelector.recentColors
+						delegate: Rectangle {
+							width: 36
+							height: 36
+							radius: 4
+							color: Qt.color("#" + ((modelData >>> 0).toString(16)).slice(2))
+							border.color: "black"
+							border.width: 2
+							MouseArea {
+								anchors.fill: parent
+								onClicked: {
+									colorSelector.rgbValue = modelData;
+									colorSelector.recordPick(modelData);
+									root.penColorSelected(colorSelector.rgbValue, Line.ArgbCode);
+								}
+							}
+						}
+					}
+				}
+
+				Canvas {
+					id: wheel
+					anchors.top: presetRow.bottom
+					anchors.topMargin: 16
+					anchors.horizontalCenter: parent.horizontalCenter
+					anchors.bottom: parent.bottom
+					anchors.bottomMargin: 24
+					property real avail: Math.min(parent.width - 80, height)
+					width: avail > 0 ? avail : 240
+					antialiasing: true
+
+					property real currentH: 0.0
+					property real currentS: 0.0
+					property real currentV: 1.0
+					property real centerX: width / 2
+					property real centerY: height / 2
+					property real outerR: Math.min(width, height) / 2 - 4
+					property real ringThickness: 40
+					property real innerR: outerR - ringThickness
+					property real svSide: innerR * 1.30
+
+					function syncFromRGB(rgb) {
+						var u = (rgb >>> 0);
+						var r = ((u >> 16) & 0xFF) / 255;
+						var g = ((u >> 8) & 0xFF) / 255;
+						var b = (u & 0xFF) / 255;
+						var mx = Math.max(r, Math.max(g, b));
+						var mn = Math.min(r, Math.min(g, b));
+						var d = mx - mn;
+						var h = 0;
+						if (d > 0) {
+							if (mx === r) h = ((g - b) / d) % 6;
+							else if (mx === g) h = (b - r) / d + 2;
+							else h = (r - g) / d + 4;
+							h /= 6;
+							if (h < 0) h += 1;
+						}
+						currentH = h;
+						currentS = mx === 0 ? 0 : d / mx;
+						currentV = mx;
+						requestPaint();
+					}
+
+					Component.onCompleted: syncFromRGB(colorSelector.rgbValue)
+					onWidthChanged: requestPaint()
+
+					onPaint: {
+						var ctx = getContext("2d");
+						ctx.clearRect(0, 0, width, height);
+
+						var ringMidR = (outerR + innerR) / 2;
+						for (var deg = 0; deg < 360; deg += 1) {
+							ctx.beginPath();
+							ctx.arc(centerX, centerY, ringMidR,
+								(deg - 0.7) * Math.PI / 180,
+								(deg + 0.7) * Math.PI / 180);
+							ctx.lineWidth = ringThickness;
+							ctx.strokeStyle = Qt.hsva(deg / 360, 1, 1, 1);
+							ctx.stroke();
+						}
+
+						var hueRad = currentH * 2 * Math.PI;
+						var hx = centerX + Math.cos(hueRad) * ringMidR;
+						var hy = centerY + Math.sin(hueRad) * ringMidR;
+						ctx.beginPath();
+						ctx.arc(hx, hy, ringThickness / 2 - 3, 0, 2 * Math.PI);
+						ctx.lineWidth = 4;
+						ctx.strokeStyle = "white";
+						ctx.stroke();
+						ctx.lineWidth = 2;
+						ctx.strokeStyle = "black";
+						ctx.stroke();
+
+						var half = svSide / 2;
+						var x0 = centerX - half;
+						var y0 = centerY - half;
+
+						ctx.fillStyle = Qt.hsva(currentH, 1, 1, 1);
+						ctx.fillRect(x0, y0, svSide, svSide);
+
+						var gH = ctx.createLinearGradient(x0, y0, x0 + svSide, y0);
+						gH.addColorStop(0, "rgba(255,255,255,1)");
+						gH.addColorStop(1, "rgba(255,255,255,0)");
+						ctx.fillStyle = gH;
+						ctx.fillRect(x0, y0, svSide, svSide);
+
+						var gV = ctx.createLinearGradient(x0, y0, x0, y0 + svSide);
+						gV.addColorStop(0, "rgba(0,0,0,0)");
+						gV.addColorStop(1, "rgba(0,0,0,1)");
+						ctx.fillStyle = gV;
+						ctx.fillRect(x0, y0, svSide, svSide);
+
+						ctx.lineWidth = 2;
+						ctx.strokeStyle = "black";
+						ctx.strokeRect(x0, y0, svSide, svSide);
+
+						var sx = x0 + currentS * svSide;
+						var sy = y0 + (1 - currentV) * svSide;
+						ctx.beginPath();
+						ctx.arc(sx, sy, 9, 0, 2 * Math.PI);
+						ctx.lineWidth = 3;
+						ctx.strokeStyle = "white";
+						ctx.stroke();
+						ctx.lineWidth = 1;
+						ctx.strokeStyle = "black";
+						ctx.stroke();
+					}
+
+					MouseArea {
+						id: wheelMouse
+						anchors.fill: parent
+						property string mode: ""
+
+						function handleTouch(x, y, isPress) {
+							var dx = x - wheel.centerX;
+							var dy = y - wheel.centerY;
+							var r = Math.sqrt(dx * dx + dy * dy);
+							var half = wheel.svSide / 2;
+							if (isPress) {
+								if (r >= wheel.innerR - 4 && r <= wheel.outerR + 4) {
+									mode = "hue";
+								} else if (Math.abs(dx) <= half + 4 && Math.abs(dy) <= half + 4) {
+									mode = "sv";
+								} else {
+									mode = "";
+								}
+							}
+							if (mode === "hue") {
+								var ang = Math.atan2(dy, dx);
+								wheel.currentH = (ang / (2 * Math.PI) + 1) % 1;
+							} else if (mode === "sv") {
+								var sxc = Math.max(-half, Math.min(half, dx));
+								var syc = Math.max(-half, Math.min(half, dy));
+								wheel.currentS = (sxc + half) / wheel.svSide;
+								wheel.currentV = 1 - (syc + half) / wheel.svSide;
+							}
+							if (mode !== "") {
+								colorSelector.rgbValue = colorSelector.argbFromHSV(
+									wheel.currentH, wheel.currentS, wheel.currentV);
+								wheel.requestPaint();
+							}
+						}
+
+						onPressed: handleTouch(mouseX, mouseY, true)
+						onPositionChanged: if (pressed) handleTouch(mouseX, mouseY, false)
+						onReleased: {
+							if (mode !== "") {
+								colorSelector.rgbValue = colorSelector.argbFromHSV(
+									wheel.currentH, wheel.currentS, wheel.currentV);
+								colorSelector.recordPick(colorSelector.rgbValue);
+								root.penColorSelected(colorSelector.rgbValue, Line.ArgbCode);
+							}
+							mode = "";
+						}
+					}
+				}
+			}
+		}
+	}
+}
+END TRAVERSE
+TRAVERSE ?#columnSelector
+LOCATE BEFORE ColorGrid
+INSERT {
+	ArkControls.FoldoutSectionHeader {
+		label: "Pick custom color"
+		antialiasing: root.antialiasing
+		Layout.fillWidth: true
+	}
+	CustomColorSelector {
+	}
+	ArkControls.FoldoutDivider {
+		Layout.fillWidth: true
+	}
+}
+END TRAVERSE
+TRAVERSE ?#rowSelector
+LOCATE BEFORE ColumnLayout > HighlighterToggle
+INSERT {
+	ColumnLayout {
+		spacing: 0
+		Layout.fillHeight: true
+		ArkControls.FoldoutSectionHeader {
+			label: "Pick custom color"
+			antialiasing: root.antialiasing
+			Layout.fillWidth: true
+		}
+		CustomColorSelector {
+		}
+	}
+	VerticalDivider {}
+}
+END TRAVERSE
+END AFFECT

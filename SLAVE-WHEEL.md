@@ -201,3 +201,106 @@ OPEN — not started yet.
 
 (When you're done, append a "DONE — <date>" header and a short
 summary. Master will then commit and update README.)
+
+---
+
+## Update from MASTER (2026-04-24, mid-iteration)
+
+You've been iterating. Two things to fold in for the next pass:
+
+### 1. User wants BOTH hex text AND wheel — keep both surfaces
+
+Direct quote from user: *"I'd actually probably like both -- the text
+selection and also the colour-wheel."*
+
+Your popup approach (rainbow swatch in recents row → opens modal Popup
+containing the wheel) is exactly right — the v1.2 hex picker stays as
+the always-visible quick path, the wheel is one tap away when needed.
+**Keep this design. Don't replace the hex field with the wheel.**
+
+### 2. v1.2 layout fixes the user is asking for (still apply in current src)
+
+User screenshotted v1.2 (the version your popup approach is built on
+top of) and asked, verbatim: *"can you center the text in the
+colour-preview rectangle (vertically) and then shift the whole
+rectangle down so that the tiny squares don't touch the
+colour-preview-rectangle?"*
+
+Concretely the user wants:
+
+- **Recents row OUT of the colour-preview rectangle**, with a visible
+  gap between it and the rectangle's top edge. Today the row is
+  anchored `parent.top` of the inner Rectangle (same parent as the
+  TextInput) and visually crowds against the rectangle's coloured
+  border on top.
+- **Hex TextInput vertically centered in the rectangle** (i.e.
+  `anchors.centerIn: parent`) — not at the bottom edge as v1.2
+  currently has it via `anchors.bottom + bottomMargin: 16`.
+
+The cleanest restructure (what MASTER would have shipped if MASTER
+hadn't been told to defer to you):
+
+```
+ArkControls.FoldoutGrid {
+    id: cgrid
+    columns: 1
+    // state (rgbValue, recentColors, loadRecent/saveRecent/recordPick) on cgrid
+
+    // Box 1 — recents row (with rainbow swatch trigger as you have today)
+    ArkControls.FoldoutGridItem {
+        Layout.preferredHeight: 60
+        focusPolicy: Qt.NoFocus
+        selected: false
+        Row { anchors.centerIn: parent; spacing: 6; Repeater { ... } }
+    }
+
+    // Box 2 — colour-preview rectangle, hex centered
+    ArkControls.FoldoutGridItem {
+        Layout.preferredHeight: 100
+        id: previewItem
+        focusPolicy: Qt.NoFocus
+        selected: { ... matches rgbValue against pen.colorCode ... }
+        onPressed: root.penColorSelected(cgrid.rgbValue, Line.ArgbCode)
+        Rectangle {
+            anchors.fill: parent
+            color: "white"
+            border.color: Qt.color("#" + (cgrid.rgbValue >>> 0).toString(16))
+            border.width: 20
+            TextInput {
+                anchors.centerIn: parent      // ← centered, NOT anchors.bottom
+                font.pointSize: 28
+                ...
+            }
+        }
+    }
+
+    // (your wheel Popup stays as-is, triggered from box 1)
+}
+```
+
+Splitting into two FoldoutGridItems is the structural way to give the
+recents row its own visual frame separated from the colour-preview
+rectangle. The grid's natural spacing between items provides the gap
+the user is asking for; no extra margin tuning needed.
+
+When you make this change, also propagate state from the old
+`colorSelector` id (the single FoldoutGridItem) up to a new `cgrid`
+id on the parent FoldoutGrid — both child boxes need to read
+`cgrid.rgbValue` / `cgrid.recentColors` and call `cgrid.recordPick()`.
+The Connections block in the wheel Popup that synced wheel ↔ rgbValue
+still works, just rewire `target: cgrid` instead of `target: colorSelector`.
+
+### 3. Don't let MASTER's deploys clobber your in-flight source
+
+MASTER attempted to redeploy v1.2 from a `git checkout`-based revert
+during this iteration; the file changed under MASTER's hands because
+you were also writing to it. The compiled `build/freeColour.qmd` got
+deployed (8720 bytes, mtime 06:24) regardless — MASTER's `make
+reinstall` happened to compile the version YOU had just written, not
+the v1.2 MASTER intended.
+
+Going forward, MASTER won't touch `src/freeColour.qml-diff` while you
+are active. Your saved-aside file at `src/freeColour-wheel.qml-diff`
+(your earlier inline-wheel attempt, 320 lines) is untouched and you
+can ignore it — your current popup approach in `src/freeColour.qml-diff`
+is what we're shipping.
