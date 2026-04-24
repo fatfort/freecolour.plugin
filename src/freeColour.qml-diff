@@ -78,12 +78,7 @@ INSERT {
 			}
 
 			focusPolicy: Qt.NoFocus
-			selected: {
-				if (root.pen.color !== Line.ArgbCode) {
-					return false;
-				}
-				return (rgbValue >>> 0) === (root.pen.colorCode >>> 0);
-			}
+			selected: false
 			onPressed: root.penColorSelected(rgbValue, Line.ArgbCode)
 			Epaper.ScreenModeItem {
 				anchors.fill: parent
