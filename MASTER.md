@@ -80,14 +80,14 @@ freeColour.plugin/
 └── (scratch experiments live in ../ferrari/scratch/, NOT in this repo)
 ```
 
-## Slaves currently dispatched
+## Slaves dispatched
 
-| File | Owner role | Status (read the file's own Status section for current state) |
+| File | Owner role | Status |
 |---|---|---|
-| SLAVE-QMLDIFF.md | Toolchain build | OPEN |
-| SLAVE-WRITINGTOOL.md | QML reverse-engineering | OPEN |
-| SLAVE-COMMUNITY.md | Prior-art research | OPEN |
-| SLAVE-ALTPATH.md | Alternative mechanisms | OPEN |
+| SLAVE-QMLDIFF.md | Toolchain build | DONE 2026-04-24 — qmldiff binary at `~/src/qmldiff/target/release/qmldiff`, `bin/compile-qmd.sh` wrapper, `reference/qmldiff-workflow.md`. Round-trip verified. |
+| SLAVE-WRITINGTOOL.md | QML reverse-engineering | DONE 2026-04-24 — extracted `WritingTool.qml` (479 lines, at `../ferrari/scratch/qml-dump/files/`), diagnosed why upstream Timer no-ops (Repeater clobber), recommended REBUILD-binding-expression injection point. Findings turned out to match what ingatellent's `addColorSelector.qmd` already does. |
+| SLAVE-COMMUNITY.md | Prior-art research | DONE 2026-04-24 — found ingatellent/xovi-qmd-extensions/3.26/addColorSelector.qmd: a working hex-ARGB picker UI, MIT, confirmed working on rMPP and Move per their issue #12. Their `3.26/changeGreenColor.qmd` is byte-identical to FouzR's (md5 225953e2…). |
+| SLAVE-ALTPATH.md | Alternative mechanisms | DONE 2026-04-24 (with deferred verification) — `floating.qmd` quick-tool slots accept arbitrary `paletteEnum:9 + rgb` with no QML changes. Documented JSON schema; tap-and-draw confirmation deferred to v1.1. |
 
 There is **no sibling coordination** between slaves. Each works from
 its brief alone and writes results to its own `## Status` section. You
@@ -111,16 +111,38 @@ its brief alone and writes results to its own `## Status` section. You
 
 ## Decision log
 
-- 2026-04-24 — v0.1 implementation cloned `changeGreenColor.qmd`
+- **2026-04-24** — v0.1 cloned `changeGreenColor.qmd` substitution
   pattern. Confirmed cloning + install + restart + reload pipeline
-  works end-to-end. Substitution is a no-op on this firmware (see
-  Proven #7). Pivoted to slave-driven investigation.
+  works end-to-end. Substitution itself is a no-op on this firmware
+  (see Proven #7). Pivoted to slave-driven investigation.
+- **2026-04-24** — Slaves returned. SLAVE-COMMUNITY's find collapses
+  the problem: ingatellent's `addColorSelector.qmd` already ships a
+  working hex-ARGB picker on 3.26. SLAVE-WRITINGTOOL independently
+  arrived at the same injection-point shape (REBUILD on bindings, not
+  property writes). v1.0 = vendor + ship ingatellent's two qmds with
+  our Makefile + README + project history. Zero new qmd code.
+  SLAVE-QMLDIFF's toolchain remains in tree for v1.1+ work. Awaiting
+  user verification that "Pick custom color" UI appears in the pen
+  menu after `make install`.
 
-## When to ship v1
+## v1.0 status (2026-04-24, after `make install`)
 
-When SLAVE-WRITINGTOOL identifies a working injection point AND
-SLAVE-QMLDIFF gives us a tool to author from plain-name source, write
-v1 of `src/freeColour.qmd` against that injection point, verify on
-device with the existing test loop (`make reinstall` + draw stroke +
-sync notebook + `python3 ferrari/scratch/claude-notebook/decode.py`),
-commit, update README, mark slaves DONE.
+- `src/changeGreenColor.qmd` and `src/addColorSelector.qmd` deployed
+  to device.
+- Old broken `freeColour.qmd` removed from device.
+- `changeGreenColor.qmd.bak` (FouzR's pre-3.26 file) preserved on
+  device for `make restore`.
+- Awaiting user confirmation: "Pick custom color" menu item visible
+  on a pen → typing `8B4513` → drawing produces a brown stroke.
+
+## v1.1 (planned)
+
+- Pre-seed `quickTool.json` with a brown highlighter slot via a
+  small qmd that runs an XHR PUT on first load (per SLAVE-ALTPATH's
+  recommendation). One-tap brown without typing the hex.
+- Re-test "any pen can be a shader" claim on solid pens; if true,
+  invalidates Proven #2 and unlocks free-form RGB on every pen.
+- Decide whether to switch authoring of any future qmds (e.g. a HSV
+  wheel popup) to plain-name source via `bin/compile-qmd.sh`. Today
+  v1.0 is vendored straight from upstream so authoring isn't yet on
+  the critical path.
