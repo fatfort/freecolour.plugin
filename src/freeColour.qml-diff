@@ -22,7 +22,7 @@ INSERT {
 		ArkControls.FoldoutGridItem {
 			Layout.fillWidth: true
 			Layout.fillHeight: true
-			Layout.preferredHeight: 140
+			Layout.preferredHeight: 200
 			id: colorSelector
 			property int rgbValue: (0xFFFFFFFF)
 
@@ -84,44 +84,46 @@ INSERT {
 				objectName: "pen-mono-dither"
 			}
 
+			Row {
+				id: presetRow
+				spacing: 6
+				anchors.top: parent.top
+				anchors.horizontalCenter: parent.horizontalCenter
+				anchors.topMargin: 12
+				Repeater {
+					model: colorSelector.recentColors
+					delegate: Rectangle {
+						width: 36
+						height: 36
+						radius: 4
+						color: Qt.color("#" + ((modelData >>> 0).toString(16)).slice(2))
+						border.color: "black"
+						border.width: 2
+						MouseArea {
+							anchors.fill: parent
+							onClicked: {
+								colorSelector.rgbValue = modelData;
+								colorSelector.recordPick(modelData);
+								root.penColorSelected(colorSelector.rgbValue, Line.ArgbCode);
+							}
+						}
+					}
+				}
+			}
+
 			Rectangle {
-				anchors.fill: parent
+				anchors.top: presetRow.bottom
+				anchors.left: parent.left
+				anchors.right: parent.right
+				anchors.bottom: parent.bottom
+				anchors.topMargin: 16
 				color: "white"
 				border.color: Qt.color("#" + (colorSelector.rgbValue >>> 0).toString(16))
 				border.width: 20
 				antialiasing: root.antialiasing
 
-				Row {
-					id: presetRow
-					spacing: 6
-					anchors.top: parent.top
-					anchors.horizontalCenter: parent.horizontalCenter
-					anchors.topMargin: 16
-					Repeater {
-						model: colorSelector.recentColors
-						delegate: Rectangle {
-							width: 36
-							height: 36
-							radius: 4
-							color: Qt.color("#" + ((modelData >>> 0).toString(16)).slice(2))
-							border.color: "black"
-							border.width: 2
-							MouseArea {
-								anchors.fill: parent
-								onClicked: {
-									colorSelector.rgbValue = modelData;
-									colorSelector.recordPick(modelData);
-									root.penColorSelected(colorSelector.rgbValue, Line.ArgbCode);
-								}
-							}
-						}
-					}
-				}
-
 				TextInput {
-					anchors.bottom: parent.bottom
-					anchors.horizontalCenter: parent.horizontalCenter
-					anchors.bottomMargin: 16
+					anchors.centerIn: parent
 					font.pointSize: 28
 					color: "black"
 					text: ("00000000" + ((colorSelector.rgbValue >>> 0).toString(16).toUpperCase())).slice(-8)
