@@ -7,8 +7,14 @@ colour picker to xochitl's pen menus on reMarkable Paper Pro (firmware
 ## What you get
 
 Open any notebook → tap a pen → look for **"Pick custom color"** in the
-colour menu. Type any hex AARRGGBB (e.g. `FF8B4513` for saddle brown).
-The selected pen draws strokes in that exact RGB.
+colour menu. Two ways to pick:
+
+- **Tap a preset swatch** — 8 colours that aren't in xochitl's stock
+  palette: brown, tan, salmon, coral, sky, indigo, olive, teal. One
+  tap, no typing.
+- **Type a hex AARRGGBB** in the field — e.g. `FF8B4513` for saddle
+  brown. **Must be 8 hex digits** (alpha first); typing only 6 leaves
+  the field at its default `FFFFFFFF` (neutral white).
 
 Backed by xochitl's ARGB(9) wildcard colour: highlighter and shader
 strokes record `color_rgba=(R,G,B,A)` and the rasterizer renders them
@@ -41,20 +47,23 @@ make status      # list installed qmds + backups
 
 ```
 src/
-├── changeGreenColor.qmd     # required prerequisite — the REPLACE on
-│                            # `ensureSelection` that lets tools stay at
-│                            # color=ARGB(9) with a custom colorCode
-│                            # without falling back to defaults.
-└── addColorSelector.qmd     # the picker UI: a "Pick custom color" menu
-                             # item with a hex-input field that calls
-                             # `penColorSelected(rgbValue, ARGB)` directly.
+├── changeGreenColor.qmd     # vendored from ingatellent (MIT) — REPLACE
+│                            # on `ensureSelection` that lets tools hold
+│                            # color=ARGB(9) + custom colorCode without
+│                            # falling back to defaults.
+├── addColorSelector.qmd     # vendored from ingatellent (MIT) — the
+│                            # original hex-only picker; kept in tree for
+│                            # reference but not installed by the Makefile.
+└── freeColour.qml-diff      # OURS — preset palette + neutral default,
+                             # forked from addColorSelector. Compiles via
+                             # bin/compile-qmd.sh + reference/hashtab to
+                             # build/freeColour.qmd.
 ```
 
-Both are vendored verbatim from
-[ingatellent/xovi-qmd-extensions/3.26](https://github.com/ingatellent/xovi-qmd-extensions/tree/main/3.26)
-(MIT licensed). We didn't write them; we packaged them with an
-install Makefile and a project history that documents how we
-arrived at "use the upstream that already works."
+The Makefile's `install` target compiles `src/freeColour.qml-diff` and
+pushes `build/freeColour.qmd` alongside `src/changeGreenColor.qmd`,
+removing any prior `addColorSelector.qmd` from the device (it's
+superseded by our forked version).
 
 ## Compatibility
 
