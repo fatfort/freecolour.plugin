@@ -1,7 +1,7 @@
 # freeColour install/restore
 #
 # Default device is USB (10.11.99.1). Override:
-#     make install RM=192.168.1.112
+#     make install DEVICE=192.168.1.112
 #
 # Targets:
 #     install            push freeColour.qmd, back up + remove changeGreenColor.qmd, restart xochitl
@@ -10,8 +10,8 @@
 #     status             list installed qmd extensions on the device
 #     uninstall          drop freeColour.qmd and restart xochitl (does not restore changeGreenColor)
 
-RM      ?= 10.11.99.1
-SSH      = ssh -o StrictHostKeyChecking=no root@$(RM)
+DEVICE  ?= 10.11.99.1
+SSH      = ssh -o StrictHostKeyChecking=no root@$(DEVICE)
 SCP      = scp -o StrictHostKeyChecking=no
 QMD_DIR  = /home/root/xovi/exthome/qt-resource-rebuilder
 EXT      = src/freeColour.qmd
@@ -24,13 +24,13 @@ install:
 	@echo "==> Removing changeGreenColor.qmd from active extensions"
 	@$(SSH) 'rm -f $(QMD_DIR)/changeGreenColor.qmd'
 	@echo "==> Pushing freeColour.qmd"
-	@$(SCP) $(EXT) root@$(RM):$(QMD_DIR)/freeColour.qmd
+	@$(SCP) $(EXT) root@$(DEVICE):$(QMD_DIR)/freeColour.qmd
 	@echo "==> Restarting xochitl"
 	@$(SSH) 'systemctl restart xochitl'
 	@echo "==> Done. Open a notebook, switch to highlighter or shader, and check the colour palette for brown."
 
 reinstall:
-	@$(SCP) $(EXT) root@$(RM):$(QMD_DIR)/freeColour.qmd
+	@$(SCP) $(EXT) root@$(DEVICE):$(QMD_DIR)/freeColour.qmd
 	@$(SSH) 'systemctl restart xochitl'
 	@echo "==> Reinstalled."
 
