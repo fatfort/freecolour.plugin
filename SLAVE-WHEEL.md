@@ -293,6 +293,106 @@ backwards.
 
 ---
 
+## Update from MASTER (2026-04-24, late iteration — PARSE FAILURE)
+
+Your v2.0 / v2.1 source (the popup version with cgrid + Popup at
+FoldoutGrid level) compiled clean via `bin/compile-qmd.sh` but
+**failed at runtime parse**, taking floating.qmd's patches down with
+it. xochitl journal:
+
+```
+[qmldiff]: Error while processing file tree:
+  (On behalf of '...freeColour.qmd'): Error while parsing:
+  expected item assignment value token, got Some(Symbol('('))
+```
+
+Cascade: when qmldiff aborts WritingTool.qml processing because
+freeColour.qmd is unparseable, NO .qmd file (including floating.qmd)
+gets to apply its patches to WritingTool.qml. User lost Cycle Preset
++ Save Preset + Reset FloatBar from the floating-toolbar UI in
+addition to our picker.
+
+MASTER has rolled back to v1.2 (commit dca002d, 178 lines, no
+popup, no rainbow swatch — just the recents row + hex field) so the
+device is usable again. Find the offending construct, fix it, then
+re-add the popup carefully.
+
+### Likely offending constructs (binary-search candidates)
+
+After a `:` qmldiff found a `(` token where it expected a value.
+v2.1 introduced these new patterns over v1.2 — one of them is the
+culprit. Order them by suspect-then-test (most likely first):
+
+1. **`closePolicy: Popup.CloseOnPressOutside | Popup.CloseOnEscape`**
+   — bitwise `|` of dotted-identifier constants. qmldiff may not
+   handle the `|` operator at item-assignment-value position.
+   Workaround: compute the int once and assign the literal,
+   `closePolicy: 6` (PressOutside=2 | Escape=4 in Qt's enum).
+2. **`parent: Overlay.overlay`** as a Popup property — `Overlay` is
+   an attached property on the topmost ApplicationWindow; qmldiff
+   may parse it as an identifier path correctly but tokenize the
+   following Item-children differently.
+3. **`contentItem: Canvas { id: wheel; ... }`** — assigning a
+   component-typed property to an inline declaration. Try moving
+   the Canvas out as a standalone child and just naming it via
+   `contentItem: wheel` if qmldiff dislikes the inline form.
+4. **`Connections { target: cgrid; function onRgbValueChanged() {...} }`**
+   — function declarations inside a Connections block (Qt 5.15+
+   style). qmldiff might only tolerate the older `onRgbValueChanged: {...}`
+   slot syntax. Try the slot form.
+5. **Properties + functions defined directly on `ArkControls.FoldoutGrid`**
+   (the cgrid wrapper) — v1.2 only put state on a FoldoutGridItem
+   child. qmldiff may be stricter about what goes on the outer
+   container.
+6. **`Component.onCompleted: loadRecent()`** as a single-line slot
+   handler vs. v1.2's `Component.onCompleted: { ... }` block form.
+   Less likely (v1.2 uses similar single-line `onPressed:` etc.)
+   but worth eliminating.
+
+### Fastest debug loop
+
+Iterate on src/freeColour.qml-diff locally. After each edit:
+
+```sh
+bin/compile-qmd.sh src/freeColour.qml-diff
+# Then on device, do NOT make reinstall yet — too disruptive.
+# Instead, scp the qmd and tail xochitl's qmldiff-error line:
+scp build/freeColour.qmd root@10.11.99.1:/home/root/xovi/exthome/qt-resource-rebuilder/freeColour.qmd
+ssh root@10.11.99.1 'systemctl restart xochitl'
+sleep 8
+ssh root@10.11.99.1 "journalctl -u xochitl --since '15 sec ago' --no-pager 2>/dev/null | grep -i 'qmldiff'" | head -10
+```
+
+If `Error while parsing` is gone from the qmldiff lines, you've
+found the construct. If it's still there, revert the change and
+try the next candidate.
+
+### Constraint
+Do not deploy any version that doesn't first pass the journal grep
+above — every parse failure breaks Cycle Preset + the floating
+toolbar for the user. Restart budget: 5 (parse-failure iterations
+are cheaper than user-visible regressions).
+
+### After the parser is happy
+
+Re-add the rainbow swatch as the 9th item in the Row of recents
+(see commit f64d8c8 src/freeColour.qml-diff for the structure
+that worked visually but tripped the parser; also
+src/freeColour-twobox.qml-diff for the two-FoldoutGridItem
+restructure user rejected — preserve only the popup wiring from
+either, drop the structural changes).
+
+User-visible target end state:
+- v1.2 layout (single FoldoutGridItem, recents row at top of
+  rectangle, hex at bottom — same visual as currently deployed)
+- 9th swatch in recents row = rainbow gradient
+- Tap rainbow → wheel Popup opens → drag for hue + S/V → release
+  commits and closes
+- Cycle Preset / Save Preset / Reset FloatBar from floating.qmd
+  remain visible throughout
+
+---
+
 ## Update from MASTER (2026-04-24, mid-iteration)
 
 You've been iterating. Two things to fold in for the next pass:
