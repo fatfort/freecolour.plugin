@@ -92,6 +92,12 @@ INSERT {
 				objectName: "pen-mono-dither"
 			}
 
+			Rectangle {
+				id: backdrop
+				anchors.fill: parent
+				color: "white"
+			}
+
 			Row {
 				id: presetRow
 				spacing: 6
