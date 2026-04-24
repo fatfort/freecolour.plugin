@@ -1,18 +1,16 @@
 ;LOAD changeGreenColor.qmd
 ;
-;freeColour v2.1: single-box layout (v1.2 style) + rainbow swatch +
-;wheel Popup. User feedback rejected the two-FoldoutGridItem
-;restructure — preferred the v1.2 visual where recents row sits at
-;the top of the colour-preview rectangle and the hex TextInput at
-;the bottom of the same rectangle.
-;
-;Three input surfaces:
-;  - tap one of the 8 recents (top-of-rectangle row)
-;  - tap the rainbow swatch (9th slot in that row) → wheel Popup
-;  - type 8 hex digits in the TextInput at the bottom
-;
-;All three commit via cgrid.recordPick(rgb) + root.penColorSelected
-;and persist to /home/root/.freeColour-recent.json.
+;freeColour v2.0: v1.2 + HSV colour-wheel overlay, restructured.
+;  Two FoldoutGridItems inside one FoldoutGrid (id: cgrid, holds all
+;  state):
+;    - Box 1: recents row + rainbow-gradient wheel trigger, centered.
+;    - Box 2: colour-preview rectangle with a hex TextInput centered.
+;  The grid's natural inter-item spacing provides the gap the user
+;  asked for between the recents row and the preview rectangle.
+;  Wheel is a modal Popup anchored to Overlay.overlay (420x420),
+;  opens from the rainbow trigger. On release: recordPick +
+;  root.penColorSelected + close. Persistence and ARGB wiring
+;  unchanged from v1.2.
 ;
 ;Compile via bin/compile-qmd.sh; install via the project Makefile.
 
@@ -73,13 +71,67 @@ INSERT {
 			return (0xFF000000 | (r << 16) | (g << 8) | b) >>> 0;
 		}
 
-		Component.onCompleted: loadRecent()
+		Component.onCompleted: {
+			contentItem.spacing = 8;
+			loadRecent();
+		}
 
 		ArkControls.FoldoutGridItem {
-			id: colorSelector
 			Layout.fillWidth: true
-			Layout.fillHeight: true
-			Layout.preferredHeight: 140
+			Layout.preferredHeight: 60
+			focusPolicy: Qt.NoFocus
+			selected: false
+
+			Row {
+				anchors.centerIn: parent
+				spacing: 6
+				Repeater {
+					model: cgrid.recentColors
+					delegate: Rectangle {
+						width: 36
+						height: 36
+						radius: 4
+						color: Qt.color("#" + ((modelData >>> 0).toString(16)).slice(2))
+						border.color: "black"
+						border.width: 2
+						MouseArea {
+							anchors.fill: parent
+							onClicked: {
+								cgrid.rgbValue = modelData;
+								cgrid.recordPick(modelData);
+								root.penColorSelected(cgrid.rgbValue, Line.ArgbCode);
+							}
+						}
+					}
+				}
+				Rectangle {
+					width: 36
+					height: 36
+					radius: 4
+					border.color: "black"
+					border.width: 2
+					gradient: Gradient {
+						orientation: Gradient.Horizontal
+						GradientStop { position: 0.00; color: "#FF0000" }
+						GradientStop { position: 0.17; color: "#FFFF00" }
+						GradientStop { position: 0.33; color: "#00FF00" }
+						GradientStop { position: 0.50; color: "#00FFFF" }
+						GradientStop { position: 0.67; color: "#0000FF" }
+						GradientStop { position: 0.83; color: "#FF00FF" }
+						GradientStop { position: 1.00; color: "#FF0000" }
+					}
+					MouseArea {
+						anchors.fill: parent
+						onClicked: wheelPopup.open()
+					}
+				}
+			}
+		}
+
+		ArkControls.FoldoutGridItem {
+			id: previewItem
+			Layout.fillWidth: true
+			Layout.preferredHeight: 100
 			focusPolicy: Qt.NoFocus
 			selected: {
 				if (root.pen.color !== Line.ArgbCode) {
@@ -102,58 +154,8 @@ INSERT {
 				border.width: 20
 				antialiasing: root.antialiasing
 
-				Row {
-					id: presetRow
-					spacing: 6
-					anchors.top: parent.top
-					anchors.horizontalCenter: parent.horizontalCenter
-					anchors.topMargin: 16
-					Repeater {
-						model: cgrid.recentColors
-						delegate: Rectangle {
-							width: 36
-							height: 36
-							radius: 4
-							color: Qt.color("#" + ((modelData >>> 0).toString(16)).slice(2))
-							border.color: "black"
-							border.width: 2
-							MouseArea {
-								anchors.fill: parent
-								onClicked: {
-									cgrid.rgbValue = modelData;
-									cgrid.recordPick(modelData);
-									root.penColorSelected(cgrid.rgbValue, Line.ArgbCode);
-								}
-							}
-						}
-					}
-					Rectangle {
-						width: 36
-						height: 36
-						radius: 4
-						border.color: "black"
-						border.width: 2
-						gradient: Gradient {
-							orientation: Gradient.Horizontal
-							GradientStop { position: 0.00; color: "#FF0000" }
-							GradientStop { position: 0.17; color: "#FFFF00" }
-							GradientStop { position: 0.33; color: "#00FF00" }
-							GradientStop { position: 0.50; color: "#00FFFF" }
-							GradientStop { position: 0.67; color: "#0000FF" }
-							GradientStop { position: 0.83; color: "#FF00FF" }
-							GradientStop { position: 1.00; color: "#FF0000" }
-						}
-						MouseArea {
-							anchors.fill: parent
-							onClicked: wheelPopup.open()
-						}
-					}
-				}
-
 				TextInput {
-					anchors.bottom: parent.bottom
-					anchors.horizontalCenter: parent.horizontalCenter
-					anchors.bottomMargin: 16
+					anchors.centerIn: parent
 					font.pointSize: 28
 					color: "black"
 					text: ("00000000" + ((cgrid.rgbValue >>> 0).toString(16).toUpperCase())).slice(-8)

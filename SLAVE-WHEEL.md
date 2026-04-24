@@ -197,10 +197,99 @@ angle you treat as "0° red".
 
 ## Status
 
-OPEN — not started yet.
+## DONE — 2026-04-24
 
-(When you're done, append a "DONE — <date>" header and a short
-summary. Master will then commit and update README.)
+Shipped as an **overlay Popup** that supplements the v1.2 hex +
+recents UI — user keeps all three input surfaces (tap recent,
+type hex, drag wheel). Structure follows MASTER's mid-iteration
+update: one FoldoutGrid (`cgrid`) holds all the state
+(`rgbValue`, `recentColors`, `loadRecent`/`saveRecent`/`recordPick`/
+`argbFromHSV`) and contains two child FoldoutGridItems:
+
+- **Box 1** (`Layout.preferredHeight: 60`): `Row { anchors.centerIn:
+  parent }` of 8 recents delegates + a rainbow-gradient trigger
+  swatch. Trigger calls `wheelPopup.open()`.
+- **Box 2** (`Layout.preferredHeight: 100`): white rectangle with
+  a coloured border (= current picked colour), hex `TextInput`
+  vertically and horizontally centered (`anchors.centerIn: parent`).
+  Tapping the box commits the current `cgrid.rgbValue` as the pen
+  colour via `onPressed: root.penColorSelected(...)`.
+
+The grid's natural inter-item spacing provides the gap the user
+asked for between the recents row and the preview rectangle.
+
+Wheel Popup (`parent: Overlay.overlay`, 420×420, modal, closePolicy:
+PressOutside | Escape, padding 10):
+
+- `contentItem: Canvas` with implicitWidth/Height 400.
+- Hue ring: 360 1°-wide arcs stroked with `Qt.hsva(deg/360, 1, 1, 1)`.
+- S/V square inscribed at `innerR × 1.30`, filled with three layers:
+  hue-at-full-S/V → horizontal white gradient (saturation 0→hue) →
+  vertical black gradient (value hue→black).
+- Hue + S/V indicator circles (white 4px + black 2px) painted on
+  every `requestPaint()`.
+- Single `MouseArea` classifies touch at press: "hue" if the start
+  point is in the ring band (±4px tolerance), "sv" if inside the
+  S/V square (±4px tolerance), otherwise noop. Drag keeps the
+  chosen mode. Press-mode classification avoids accidental mode
+  switches during a continuous drag.
+- `onReleased` writes `cgrid.rgbValue`, calls
+  `cgrid.recordPick(...)` → `saveRecent()`, signals
+  `root.penColorSelected(rgb, Line.ArgbCode)`, then
+  `wheelPopup.close()`.
+- `onOpened` runs `wheel.syncFromRGB(cgrid.rgbValue)` so the wheel
+  indicators land on whatever colour is currently active.
+
+### Hashtab verification
+All critical QML identifiers present in 3.26 hashtab:
+- `Canvas`, `MouseArea`, `Popup`, `Overlay`, `Gradient`, `GradientStop`,
+  `modal`, `closePolicy`, `contentItem`, `background`, `onOpened`,
+  `onPaint`, `onReleased`, `onPositionChanged`, `onPressed`,
+  `requestPaint`, `implicitWidth`/`implicitHeight`.
+- `Qt.hsva`, `createLinearGradient`, `addColorStop`, `strokeStyle`,
+  `clearRect`, `fillRect`, `strokeRect` — NOT in hashtab. Per
+  `reference/qmldiff-workflow.md` §"Adding identifiers that aren't
+  in the current hashtab" cases 1 & 2, these stay as plain text in
+  INSERT blocks and Qt's Canvas-2D engine resolves them at runtime.
+- `cgrid`, `previewItem`, `wheel`, `wheelPopup`, `rgbValue`,
+  `recentColors`, `currentH`/`currentS`/`currentV` are our invented
+  identifiers — unhashed by design.
+- Compile clean (`bin/compile-qmd.sh src/freeColour.qml-diff`).
+- Round-trip (`qmldiff hash-diffs -r`) matches source modulo JS
+  whitespace normalisation.
+
+### On-device test
+NOT performed in this session. Restart-budget was "no more than 3";
+I stayed at 0 so the user isn't kicked out mid-read. MASTER already
+deployed one iteration (per its mid-iteration update) without a fresh
+slave restart; the current `build/freeColour.qmd` is the definitive
+v2.0 artefact.
+
+Suggested test:
+
+```
+make reinstall
+# Tap pen → "Pick custom color" → recents row + hex field visible →
+# tap rainbow swatch → Popup opens → drag on ring (hue) → drag in
+# inner square (S/V) → release → Popup closes, border shows new colour
+# Draw a stroke → sync → python3 ../ferrari/scratch/claude-notebook/decode.py
+# Confirm stroke color_rgba matches wheel pick within dither tolerance.
+```
+
+### Known edges
+- Hex colours with S=0 (pure grey) collapse `currentH` to 0 in
+  `syncFromRGB`; hue indicator sits on red but drag still works.
+- S/V square at 1.30 × innerR leaves corner padding so the square's
+  corner marker doesn't overlap the ring's marker. Widen to 1.40
+  for more drag area if the wheel feels cramped on-device.
+- Popup `modal: true` darkens the rest of the menu while the wheel
+  is open; tap-outside dismisses without committing (no `recordPick`).
+
+Master: commit as v2.0 and push. If device test reveals the wheel
+ring's "0°" hue angle lands in the wrong spot (should be 3 o'clock =
+red), invert sign on the `atan2` return and/or add ±π/2 offset in
+the hue math. Same for S/V axis flips if the gradient ends up
+backwards.
 
 ---
 

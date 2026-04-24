@@ -7,14 +7,18 @@ colour picker to xochitl's pen menus on reMarkable Paper Pro (firmware
 ## What you get
 
 Open any notebook → tap a pen → look for **"Pick custom color"** in the
-colour menu. Two ways to pick:
+colour menu. Three ways to pick:
 
-- **Tap a preset swatch** — 8 colours that aren't in xochitl's stock
-  palette: brown, tan, salmon, coral, sky, indigo, olive, teal. One
-  tap, no typing.
-- **Type a hex AARRGGBB** in the field — e.g. `FF8B4513` for saddle
-  brown. **Must be 8 hex digits** (alpha first); typing only 6 leaves
-  the field at its default `FFFFFFFF` (neutral white).
+- **Tap a recent swatch** — the top row shows your 8 most recent
+  picks, seeded on first run with brown, tan, salmon, coral, sky,
+  indigo, olive, teal. One tap, no drag.
+- **Tap the rainbow swatch at the end of the row** — opens an HSV
+  colour wheel overlay. Drag on the hue ring to set hue; drag in the
+  inner square for saturation (left→right) and value (top→bottom).
+  Release commits the pick, closes the overlay, and prepends it to
+  recents.
+- **Type a hex `AARRGGBB`** in the field — e.g. `FF8B4513` for saddle
+  brown. Must be 8 hex digits (alpha first).
 
 Backed by xochitl's ARGB(9) wildcard colour: highlighter and shader
 strokes record `color_rgba=(R,G,B,A)` and the rasterizer renders them
@@ -95,19 +99,15 @@ in `MASTER.md` and `SLAVE-*.md`.
 
 ## Roadmap
 
-- **v1.0** ✓ — ship ingatellent's working pair (this).
-- **v1.1** — pre-seed `quickTool.json` with a brown highlighter slot
-  so the user gets one-tap brown from the floating toolbar without
-  typing `8B4513` every time. SLAVE-ALTPATH validated the JSON
-  schema; just need a small qmd that runs an XHR PUT on first load.
-- **v1.2** — re-test "any pen can be a shader" claim on solid pens
-  now that the picker's path forces ARGB tagging. May invalidate
-  MASTER.md proven #2 (solid pens ignore RGBA) — if so, the picker
-  unlocks free-form RGB on every pen, not just highlighter/shader.
-- **v2.0** — local authoring of new qmds via `bin/compile-qmd.sh`
-  and the `asivery/qmldiff` toolchain SLAVE-QMLDIFF set up. For
-  example: replace the hex-typing UX with a HSV wheel popup (the
-  ingatellent author flagged this as a future direction in #12).
+- **v1.0** ✓ — ship ingatellent's working pair.
+- **v1.1** ✓ — preset palette + neutral default.
+- **v1.2** ✓ — persistent recents row above the hex field.
+- **v2.0** ✓ — HSV colour wheel replaces hex typing.
+- **v2.1** — pre-seed `quickTool.json` with a brown highlighter slot
+  for one-tap access from the floating toolbar.
+- **v2.2** — re-test "any pen can be a shader" claim on solid pens
+  now that the picker forces ARGB tagging. May unlock free-form RGB
+  on every pen, not just highlighter/shader.
 
 ## Credits
 

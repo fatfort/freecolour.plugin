@@ -144,15 +144,20 @@ freeColour.plugin/
   using the picker. If true, invalidates Finding #2 above and
   unlocks free-form RGB on every pen, not just highlighter/shader.
   Also opens a documentation update.
-- **v2.0** — replace the hex text field with **3 R/G/B sliders + a
-  live preview swatch**. `ArkControls.Slider`
-  (16889273475487444716) is in the hashtab so the component exists.
-  Risk: ArkControls API surface unknown without seeing examples
-  — may need a session of iteration. Defer.
-- **v2.1** — HSV wheel popup. No off-the-shelf component in
-  xochitl's QML; would need a `Canvas`-painted hue wheel + saturation/value
-  triangle with touch hit-testing. Real engineering, multi-hour.
-  ingatellent#12 author flagged this as future direction.
+- **v2.0** ✓ — HSV colour wheel picker. Canvas-painted hue ring +
+  inscribed S/V square, finger-drag hit-testing, replaces the hex
+  TextInput. `Canvas`, `onPaint`, `requestPaint`, `MouseArea` +
+  gesture handlers all confirmed present in the 3.26 hashtab.
+  `Qt.hsva`, `createLinearGradient`, `strokeStyle`, `clearRect` are
+  not hashed but are standard Canvas-2D API — qmldiff emits them
+  plain in INSERT blocks, Qt parses them at runtime.
+- **v2.1** — 3 R/G/B sliders + live preview as a simpler-but-uglier
+  alternative if the wheel doesn't survive on-device testing.
+  `ArkControls.Slider` (16889273475487444716) is in the hashtab.
+  Defer unless v2.0 regresses.
+- **v2.2** — pre-seed `quickTool.json` with a brown highlighter slot
+  so brown is one tap from the floating toolbar without re-opening
+  the picker.
 
 ## Decision log
 
@@ -168,6 +173,16 @@ freeColour.plugin/
   v1.1 ships preset palette + neutral default as the immediate
   improvement. Floating integration deferred to v1.2 (well-understood
   but needs another session).
+- **2026-04-24** — v2.0 shipped via SLAVE-WHEEL. Added a Canvas-painted
+  HSV wheel (hue ring + inscribed S/V square) in a modal Popup,
+  triggered by a rainbow-gradient swatch appended to the recents Row.
+  v1.2 recents + hex TextInput + `Layout.preferredHeight: 140` all
+  preserved — the wheel *supplements* rather than replaces. Popup
+  is parented to `Overlay.overlay` so it escapes the picker's cramped
+  height. Release commits `recordPick` + `penColorSelected` + close.
+  `Canvas`/`Popup`/`Overlay`/`MouseArea`/`onPaint`/`requestPaint` all
+  in hashtab; compile clean; round-trip decompile matches modulo
+  whitespace.
 
 ## Conventions inherited from `ferrari/CLAUDE.md`
 
