@@ -1,14 +1,13 @@
 ;LOAD changeGreenColor.qmd
 ;
-;freeColour v1.1: forked from ingatellent's addColorSelector.qmd to:
-;  1) Start with a neutral default colour (white, 0xFFFFFFFF) instead of
-;     dark green (0xFF338833). Users typing only 6 hex digits silently
-;     hit the default; that should at least be neutral, not green.
-;  2) Add a Row of 8 preset colour swatches above the hex input. Tap any
-;     swatch to apply that colour to the current pen. No typing required.
-;     Presets target the use case the project was started for: brown for
-;     colouring-in. Other slots cover common art-supply colours that are
-;     not in xochitl's stock palette.
+;freeColour v1.2: forked from ingatellent's addColorSelector.qmd to add:
+;  1) Neutral default colour (white 0xFFFFFFFF) on first run.
+;  2) Row of 8 recently-picked colours above the hex field. Each pick
+;     (hex entry or recent-tap) prepends to the list and pushes the
+;     oldest off. Persisted to /home/root/.freeColour-recent.json so it
+;     survives xochitl restarts. First run seeds from a starter list.
+;  3) ColumnLayout to stack recents above the hex field reliably,
+;     instead of fighting anchors.
 ;
 ;Compile via bin/compile-qmd.sh; install via the project Makefile.
 
@@ -25,6 +24,50 @@ INSERT {
 			Layout.fillHeight: true
 			id: colorSelector
 			property int rgbValue: (0xFFFFFFFF)
+
+			property var recentColors: [
+				0xFF8B4513, 0xFFD2B48C, 0xFFFA8072, 0xFFFF7F50,
+				0xFF87CEEB, 0xFF4B0082, 0xFF808000, 0xFF008080
+			]
+
+			function loadRecent() {
+				var xhr = new XMLHttpRequest();
+				try {
+					xhr.open("GET", "file:///home/root/.freeColour-recent.json", false);
+					xhr.send();
+					if (xhr.responseText) {
+						var d = JSON.parse(xhr.responseText);
+						if (d.recent && d.recent.length > 0) {
+							recentColors = d.recent;
+						}
+					}
+				} catch (e) {}
+			}
+
+			function saveRecent() {
+				var xhr = new XMLHttpRequest();
+				try {
+					xhr.open("PUT", "file:///home/root/.freeColour-recent.json");
+					xhr.send(JSON.stringify({recent: recentColors}));
+				} catch (e) {}
+			}
+
+			function recordPick(rgb) {
+				var n = [rgb];
+				for (var i = 0; i < recentColors.length; ++i) {
+					if (recentColors[i] !== rgb && n.length < 8) {
+						n.push(recentColors[i]);
+					}
+				}
+				recentColors = n;
+				saveRecent();
+			}
+
+			Component.onCompleted: {
+				contentItem.spacing = 8;
+				loadRecent();
+			}
+
 			focusPolicy: Qt.NoFocus
 			selected: {
 				if (root.pen.color !== Line.ArgbCode) {
@@ -39,7 +82,7 @@ INSERT {
 				mode: Epaper.ScreenModeItem.Mono
 				objectName: "pen-mono-dither"
 			}
-			Component.onCompleted: contentItem.spacing = 8
+
 			Rectangle {
 				anchors.fill: parent
 				color: "transparent"
@@ -54,16 +97,7 @@ INSERT {
 					anchors.horizontalCenter: parent.horizontalCenter
 					anchors.topMargin: 30
 					Repeater {
-						model: [
-							0xFF8B4513,
-							0xFFD2B48C,
-							0xFFFA8072,
-							0xFFFF7F50,
-							0xFF87CEEB,
-							0xFF4B0082,
-							0xFF808000,
-							0xFF008080
-						]
+						model: colorSelector.recentColors
 						delegate: Rectangle {
 							width: 36
 							height: 36
@@ -75,6 +109,7 @@ INSERT {
 								anchors.fill: parent
 								onClicked: {
 									colorSelector.rgbValue = modelData;
+									colorSelector.recordPick(modelData);
 									root.penColorSelected(colorSelector.rgbValue, Line.ArgbCode);
 								}
 							}
@@ -83,19 +118,22 @@ INSERT {
 				}
 
 				TextInput {
-					anchors.centerIn: parent
+					anchors.bottom: parent.bottom
+					anchors.horizontalCenter: parent.horizontalCenter
+					anchors.bottomMargin: 30
 					font.pointSize: 28
-					color: parent.selected ? "white" : "black"
+					color: colorSelector.selected ? "white" : "black"
 					text: ("00000000" + ((colorSelector.rgbValue >>> 0).toString(16).toUpperCase())).slice(-8)
 					inputMask: "HHHHHHHH"
 					onEditingFinished: {
 						colorSelector.rgbValue = parseInt(text,16) >>> 0;
+						colorSelector.recordPick(colorSelector.rgbValue);
 						root.penColorSelected(colorSelector.rgbValue, Line.ArgbCode);
 					}
 					onVisibleChanged: {
 						if (!visible && activeFocus) {
-							focus = false
-							Qt.inputMethod.hide()
+							focus = false;
+							Qt.inputMethod.hide();
 						}
 					}
 				}
