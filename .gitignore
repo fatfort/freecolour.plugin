@@ -1,4 +1,6 @@
 .DS_Store
 *.swp
 build/
+build-porsche/
+reference/__pycache__/
 # qmldiff binary builds locally outside this repo; see reference/qmldiff-workflow.md

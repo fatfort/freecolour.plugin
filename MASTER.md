@@ -12,6 +12,29 @@ picker to xochitl's pen menus on reMarkable Paper Pro (firmware
 3.26.0.68, both 11.8" ferrari and 7.3" Move porsche). User goal: brown
 for colouring-in (no slot in the stock palette).
 
+## Status — v2.3 SHIPPED AND CONFIRMED WORKING ON FERRARI (2026-05-05)
+
+Latest layer on the picker is a curated **favourites** palette:
+
+- Two side-by-side blocks above the hex field. Recents (left, 4+5
+  staggered, rainbow at end of row 2) and favourites (right, 15×2 = 30
+  slots, FIFO).
+- **Star button** right of the hex code (Canvas-painted polygon — the
+  rMPP system font has no ★/☆ glyph, plain Text rendered the missing-
+  glyph rectangle). Tap → "Name this colour?" popup with Yes / No,
+  just save. Yes shows a TextInput and `Qt.inputMethod.show()`s the
+  keyboard.
+- **Press-and-hold any swatch** → name-display popup (centered on
+  Overlay, self-sizing). Favourites also show a Canvas-painted trash
+  button → "Remove this favourite?" confirmation.
+- Persistence: `/home/root/.freeColour-favourites.json` as
+  `{favourites:[{rgb,name}]}`, capacity 30. Recents continue at
+  `/home/root/.freeColour-recent.json`, capacity 8.
+
+Ferrari pen menu accommodates the wider grid (~800 px). Porsche **not
+tested** at this layout; v2.4 needs a fork with smaller swatches or
+fewer fav columns.
+
 ## Status — v1.0 SHIPPED AND CONFIRMED WORKING (2026-04-24)
 
 Vendored from `ingatellent/xovi-qmd-extensions/3.26/` (MIT):
@@ -100,11 +123,13 @@ freeColour.plugin/
 ├── Makefile                 # install / restore against device
 ├── src/
 │   ├── changeGreenColor.qmd # vendored from ingatellent (MIT)
-│   ├── addColorSelector.qmd # current v1.0 picker (vendored from ingatellent)
-│   └── freeColour.qml-diff  # v1.1 plain-name source (ours, compiles to build/)
+│   ├── addColorSelector.qmd # original v1.0 picker (vendored, kept for reference)
+│   └── freeColour.qml-diff  # v2.3 plain-name source (ours, compiles to build/)
 ├── build/                   # gitignored; compiled qmds land here
+├── build-porsche/           # gitignored; reserved for the future Porsche fork
 ├── bin/
-│   └── compile-qmd.sh       # plain-name → hashed .qmd via qmldiff
+│   ├── compile-qmd.sh       # plain-name → hashed .qmd via qmldiff
+│   └── patch-floating.py    # experiment — quickTool.json grid swap (not shipped)
 └── reference/
     ├── changeGreenColor.qmd            # FouzR's, verified identical to ingatellent's 3.26
     ├── changeGreenColor-3.26-ingatellent.qmd
@@ -151,11 +176,20 @@ freeColour.plugin/
   `Qt.hsva`, `createLinearGradient`, `strokeStyle`, `clearRect` are
   not hashed but are standard Canvas-2D API — qmldiff emits them
   plain in INSERT blocks, Qt parses them at runtime.
-- **v2.1** — 3 R/G/B sliders + live preview as a simpler-but-uglier
-  alternative if the wheel doesn't survive on-device testing.
-  `ArkControls.Slider` (16889273475487444716) is in the hashtab.
-  Defer unless v2.0 regresses.
-- **v2.2** — pre-seed `quickTool.json` with a brown highlighter slot
+- **v2.3** ✓ — favourites palette. 15×2 named-favourites grid right
+  of the recents block, with a star button beside the hex field for
+  add, press-and-hold for view + remove (with confirmation), and
+  persistence at `/home/root/.freeColour-favourites.json`. Star and
+  trash icons painted on `Canvas` because the rMPP system font lacks
+  ★/☆/🗑. Total picker width ~800 px; Ferrari only.
+- **v2.4** — Porsche layout fork. Either a smaller-swatch variant or
+  fewer favourite columns; needs a separate compile target driven by
+  the Makefile (e.g. `src/freeColour-porsche.qml-diff` →
+  `build-porsche/freeColour.qmd`).
+- **v2.5** — 3 R/G/B sliders + live preview as a simpler alternative
+  to the wheel if it ever regresses. `ArkControls.Slider`
+  (16889273475487444716) is in the hashtab.
+- **v2.6** — pre-seed `quickTool.json` with a brown highlighter slot
   so brown is one tap from the floating toolbar without re-opening
   the picker.
 
@@ -183,6 +217,34 @@ freeColour.plugin/
   `Canvas`/`Popup`/`Overlay`/`MouseArea`/`onPaint`/`requestPaint` all
   in hashtab; compile clean; round-trip decompile matches modulo
   whitespace.
+- **2026-05-05** — v2.3 favourites shipped on Ferrari. Final layout:
+  side-by-side recents (4+5 staggered, rainbow at end) + favourites
+  (15×2, 30 slots) at swatch size 30×30 / 4 px. Star button is a bare
+  Canvas (no surrounding Rectangle), strokes always, fills black when
+  the current colour is favourited. Long-press popup re-parents to
+  `Overlay.overlay` and centres explicitly via x/y math —
+  `anchors.centerIn: parent` did **not** propagate as expected through
+  Popup; explicit `(parent.width - width)/2` is the reliable form.
+  Heights bind to `contentItem`'s inner column `implicitHeight + padding * 2`.
+  Three findings forced fixes mid-iteration:
+    1. **Font glyph fallback** — plain Text `★` rendered as a missing-
+       glyph rectangle on rMPP. Canvas-painted star polygon (10
+       points, alternating outer/inner radius) renders cleanly.
+    2. **`property int` truncates 32-bit unsigned ARGB** — storing
+       `0xFF8B4513` (>2^31) into `property int slotRgb` clamps to
+       negative; `(neg).toString(16)` → `"-74bb15"` and `slice(2)`
+       gives wrong colour. Fix: never store ARGB in `property int`;
+       inline `>>> 0` inside the `Qt.color("#" + ... .slice(2))`
+       binding (matches the original ingatellent pattern).
+    3. **Virtual keyboard taps register as press-outside** — the
+       default `closePolicy: Popup.CloseOnEscape | CloseOnPressOutside`
+       made `namePromptPopup` close when the user tapped the on-screen
+       keyboard. Fix: `closePolicy: Popup.CloseOnEscape` for popups
+       that use `Qt.inputMethod.show()`. Explicit Save/Cancel buttons
+       cover the dismissal UX.
+  Capacity dialled in by user feedback: 11 → 20 → 30 favourites.
+  Block separation 16 → 64 → 128 px. Outer width grew to ~800 px on
+  Ferrari (no Porsche test).
 
 ## Conventions inherited from `ferrari/CLAUDE.md`
 

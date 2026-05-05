@@ -1,12 +1,22 @@
 # freeColour install/restore
 #
-# v1.1 ships:
+# Ships:
 #   - src/changeGreenColor.qmd  (vendored from ingatellent, MIT — enabling
 #                                REPLACE on ensureSelection so tools can
 #                                hold color=ARGB(9) + custom colorCode)
 #   - build/freeColour.qmd      (ours — preset palette + neutral default,
 #                                forked from ingatellent's addColorSelector
 #                                via bin/compile-qmd.sh)
+#
+# Picker now uses a 2-row 5+4 grid for the 8 recents + rainbow swatch, so
+# it survives the narrower landscape pen menu on Porsche.
+#
+# A patched floating.qmd (build/floating.qmd via bin/patch-floating.py)
+# exists in this repo as an experiment to swap the QuickTools 4-button
+# column for a 2x2 grid, but pushing it caused other pen selectors in
+# Toolbar.qml to disappear on Ferrari (the GridLayout swap evidently
+# breaks something Foldout/PenTool depends on). The install/reinstall
+# targets no longer push it. Keep the script around for later iteration.
 #
 # Default device is USB (10.11.99.1). Override:
 #     make install DEVICE=192.168.1.112
@@ -16,9 +26,11 @@
 #     install      compile + push both qmds, back up + remove existing
 #                  changeGreenColor + addColorSelector, restart xochitl
 #     reinstall    recompile + push, restart, no backup churn
-#     restore      restore the upstream changeGreenColor from .bak, drop
-#                  our installed files, restart
-#     uninstall    drop our installed files (does NOT restore .bak; use
+#     restore      restore the upstream changeGreenColor from .bak (and
+#                  floating.qmd from .bak if one exists from a prior
+#                  install), drop our installed files, restart
+#     uninstall    drop our installed files; restore floating.qmd from .bak
+#                  if present (does NOT restore changeGreenColor; use
 #                  restore for that)
 #     status       list installed qmd extensions on the device
 #     decompile    decompile src/addColorSelector.qmd to /tmp for reading
@@ -62,6 +74,8 @@ reinstall: compile
 restore:
 	@echo "==> Restoring original changeGreenColor.qmd from .bak (or upstream if no backup)"
 	@$(SSH) 'if [ -f $(QMD_DIR)/changeGreenColor.qmd.bak ]; then mv $(QMD_DIR)/changeGreenColor.qmd.bak $(QMD_DIR)/changeGreenColor.qmd && echo "    restored from .bak"; else curl -fsSL https://raw.githubusercontent.com/FouzR/xovi-extensions/refs/heads/main/3.26/changeGreenColor.qmd -o $(QMD_DIR)/changeGreenColor.qmd; fi'
+	@echo "==> Restoring floating.qmd from .bak if present"
+	@$(SSH) 'if [ -f $(QMD_DIR)/floating.qmd.bak ]; then mv $(QMD_DIR)/floating.qmd.bak $(QMD_DIR)/floating.qmd && echo "    restored from .bak"; else echo "    no .bak, leaving floating.qmd alone"; fi'
 	@echo "==> Removing our freeColour.qmd and any leftover addColorSelector.qmd"
 	@$(SSH) 'rm -f $(QMD_DIR)/freeColour.qmd $(QMD_DIR)/addColorSelector.qmd'
 	@$(SSH) 'systemctl restart xochitl'
@@ -69,6 +83,7 @@ restore:
 
 uninstall:
 	@$(SSH) 'rm -f $(QMD_DIR)/freeColour.qmd $(QMD_DIR)/addColorSelector.qmd'
+	@$(SSH) 'if [ -f $(QMD_DIR)/floating.qmd.bak ]; then mv $(QMD_DIR)/floating.qmd.bak $(QMD_DIR)/floating.qmd && echo "    restored floating.qmd from .bak"; fi'
 	@$(SSH) 'systemctl restart xochitl'
 	@echo "==> Uninstalled. (Did NOT touch changeGreenColor.qmd; run 'make restore' for that.)"
 

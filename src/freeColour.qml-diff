@@ -1,13 +1,26 @@
 ;LOAD changeGreenColor.qmd
 ;
-;freeColour v1.2: forked from ingatellent's addColorSelector.qmd to add:
+;freeColour v2.3 (Ferrari): forked from ingatellent's addColorSelector.qmd:
 ;  1) Neutral default colour (white 0xFFFFFFFF) on first run.
-;  2) Row of 8 recently-picked colours above the hex field. Each pick
-;     (hex entry or recent-tap) prepends to the list and pushes the
-;     oldest off. Persisted to /home/root/.freeColour-recent.json so it
-;     survives xochitl restarts. First run seeds from a starter list.
-;  3) ColumnLayout to stack recents above the hex field reliably,
-;     instead of fighting anchors.
+;  2) Two side-by-side blocks (no labels). Left: recents 4+5 layout
+;     (rainbow at row-2 end). Right: favourites 10x2 grid (20 slots).
+;     Swatches 30x30 / 4 px spacing to fit the combined width.
+;     Recents persist in /home/root/.freeColour-recent.json; favourites
+;     in /home/root/.freeColour-favourites.json as {favourites:[{rgb,name}]},
+;     capacity 20 (FIFO).
+;  3) Star button right of the hex field, Canvas-painted (device font
+;     lacks ★/☆). Filled when current colour is favourited.
+;  4) Tap star → "Name this colour?" popup. Yes shows TextInput +
+;     opens the keyboard; No saves with empty name.
+;  5) PressAndHold any swatch → name-display popup centred on screen
+;     (parented to Overlay), self-sizing to its content. Favourites
+;     also show a trash button → confirmation popup → Yes calls
+;     removeFavourite() and closes both.
+;  6) HSV wheel popup retained, triggered from the rainbow swatch.
+;
+;  NB: Storing >0x7FFFFFFF in `property int` truncates to negative.
+;  Always apply `>>> 0` inside the binding when stringifying a colour,
+;  not via an intermediate `property int`.
 ;
 ;Compile via bin/compile-qmd.sh; install via the project Makefile.
 
@@ -22,7 +35,7 @@ INSERT {
 		ArkControls.FoldoutGridItem {
 			Layout.fillWidth: true
 			Layout.fillHeight: true
-			Layout.preferredHeight: 200
+			Layout.preferredHeight: 180
 			id: colorSelector
 			property int rgbValue: (0xFFFFFFFF)
 
@@ -30,6 +43,9 @@ INSERT {
 				0xFF8B4513, 0xFFD2B48C, 0xFFFA8072, 0xFFFF7F50,
 				0xFF87CEEB, 0xFF4B0082, 0xFF808000, 0xFF008080
 			]
+			// Each entry: { rgb: <int>, name: <string> }
+			property var favouriteColors: []
+			readonly property int favouriteCapacity: 30
 
 			function loadRecent() {
 				var xhr = new XMLHttpRequest();
@@ -64,6 +80,59 @@ INSERT {
 				saveRecent();
 			}
 
+			function loadFavourites() {
+				var xhr = new XMLHttpRequest();
+				try {
+					xhr.open("GET", "file:///home/root/.freeColour-favourites.json", false);
+					xhr.send();
+					if (xhr.responseText) {
+						var d = JSON.parse(xhr.responseText);
+						if (d.favourites && d.favourites.length >= 0) {
+							favouriteColors = d.favourites;
+						}
+					}
+				} catch (e) {}
+			}
+
+			function saveFavourites() {
+				var xhr = new XMLHttpRequest();
+				try {
+					xhr.open("PUT", "file:///home/root/.freeColour-favourites.json");
+					xhr.send(JSON.stringify({favourites: favouriteColors}));
+				} catch (e) {}
+			}
+
+			function isFavourited(rgb) {
+				for (var i = 0; i < favouriteColors.length; ++i) {
+					if ((favouriteColors[i].rgb >>> 0) === (rgb >>> 0)) return true;
+				}
+				return false;
+			}
+
+			function addFavourite(rgb, name) {
+				var entry = { rgb: (rgb >>> 0), name: name || "" };
+				var n = [entry];
+				for (var i = 0; i < favouriteColors.length; ++i) {
+					var f = favouriteColors[i];
+					if ((f.rgb >>> 0) !== (rgb >>> 0) && n.length < favouriteCapacity) {
+						n.push(f);
+					}
+				}
+				favouriteColors = n;
+				saveFavourites();
+			}
+
+			function removeFavourite(rgb) {
+				var n = [];
+				for (var i = 0; i < favouriteColors.length; ++i) {
+					if ((favouriteColors[i].rgb >>> 0) !== (rgb >>> 0)) {
+						n.push(favouriteColors[i]);
+					}
+				}
+				favouriteColors = n;
+				saveFavourites();
+			}
+
 			function argbFromHSV(h, s, v) {
 				var c = Qt.hsva(h, s, v, 1);
 				var r = Math.round(c.r * 255) & 0xFF;
@@ -75,6 +144,7 @@ INSERT {
 			Component.onCompleted: {
 				contentItem.spacing = 8;
 				loadRecent();
+				loadFavourites();
 			}
 
 			focusPolicy: Qt.NoFocus
@@ -88,65 +158,192 @@ INSERT {
 			}
 
 			Row {
-				id: presetRow
-				spacing: 6
+				id: blocksRow
+				spacing: 128
 				anchors.top: parent.top
 				anchors.horizontalCenter: parent.horizontalCenter
-				anchors.topMargin: 12
-				Repeater {
-					model: colorSelector.recentColors
-					delegate: Rectangle {
-						width: 36
-						height: 36
-						radius: 4
-						color: Qt.color("#" + ((modelData >>> 0).toString(16)).slice(2))
-						border.color: "black"
-						border.width: 2
-						MouseArea {
-							anchors.fill: parent
-							onClicked: {
-								colorSelector.rgbValue = modelData;
-								colorSelector.recordPick(modelData);
-								root.penColorSelected(colorSelector.rgbValue, Line.ArgbCode);
+				anchors.topMargin: 10
+
+				Column {
+					id: recentsBlock
+					spacing: 4
+
+					Row {
+						spacing: 4
+						anchors.horizontalCenter: parent.horizontalCenter
+						Repeater {
+							model: 4
+							delegate: Rectangle {
+								width: 30
+								height: 30
+								radius: 4
+								color: Qt.color("#" + ((colorSelector.recentColors[index] >>> 0).toString(16)).slice(2))
+								border.color: "black"
+								border.width: 2
+								MouseArea {
+									anchors.fill: parent
+									onClicked: {
+										var picked = colorSelector.recentColors[index] >>> 0;
+										colorSelector.rgbValue = picked;
+										root.penColorSelected(picked, Line.ArgbCode);
+										colorSelector.recordPick(picked);
+									}
+									onPressAndHold: {
+										nameDisplayPopup.swatchRgb = colorSelector.recentColors[index] >>> 0;
+										nameDisplayPopup.swatchName = "";
+										nameDisplayPopup.isFavourite = false;
+										nameDisplayPopup.open();
+									}
+								}
+							}
+						}
+					}
+
+					Row {
+						spacing: 4
+						anchors.horizontalCenter: parent.horizontalCenter
+						Repeater {
+							model: 4
+							delegate: Rectangle {
+								width: 30
+								height: 30
+								radius: 4
+								color: Qt.color("#" + ((colorSelector.recentColors[index + 4] >>> 0).toString(16)).slice(2))
+								border.color: "black"
+								border.width: 2
+								MouseArea {
+									anchors.fill: parent
+									onClicked: {
+										var picked = colorSelector.recentColors[index + 4] >>> 0;
+										colorSelector.rgbValue = picked;
+										root.penColorSelected(picked, Line.ArgbCode);
+										colorSelector.recordPick(picked);
+									}
+									onPressAndHold: {
+										nameDisplayPopup.swatchRgb = colorSelector.recentColors[index + 4] >>> 0;
+										nameDisplayPopup.swatchName = "";
+										nameDisplayPopup.isFavourite = false;
+										nameDisplayPopup.open();
+									}
+								}
+							}
+						}
+						Rectangle {
+							width: 30
+							height: 30
+							radius: 4
+							border.color: "black"
+							border.width: 2
+							gradient: Gradient {
+								orientation: Gradient.Horizontal
+								GradientStop { position: 0.00; color: "#FF0000" }
+								GradientStop { position: 0.17; color: "#FFFF00" }
+								GradientStop { position: 0.33; color: "#00FF00" }
+								GradientStop { position: 0.50; color: "#00FFFF" }
+								GradientStop { position: 0.67; color: "#0000FF" }
+								GradientStop { position: 0.83; color: "#FF00FF" }
+								GradientStop { position: 1.00; color: "#FF0000" }
+							}
+							MouseArea {
+								anchors.fill: parent
+								onClicked: wheelPopup.open()
 							}
 						}
 					}
 				}
-				Rectangle {
-					width: 36
-					height: 36
-					radius: 4
-					border.color: "black"
-					border.width: 2
-					gradient: Gradient {
-						orientation: Gradient.Horizontal
-						GradientStop { position: 0.00; color: "#FF0000" }
-						GradientStop { position: 0.17; color: "#FFFF00" }
-						GradientStop { position: 0.33; color: "#00FF00" }
-						GradientStop { position: 0.50; color: "#00FFFF" }
-						GradientStop { position: 0.67; color: "#0000FF" }
-						GradientStop { position: 0.83; color: "#FF00FF" }
-						GradientStop { position: 1.00; color: "#FF0000" }
+
+				Column {
+					id: favBlock
+					spacing: 4
+
+					Row {
+						spacing: 4
+						Repeater {
+							model: 15
+							delegate: Rectangle {
+								width: 30
+								height: 30
+								radius: 4
+								property bool filled: colorSelector.favouriteColors.length > index
+								color: filled
+									? Qt.color("#" + (((colorSelector.favouriteColors[index].rgb) >>> 0).toString(16)).slice(2))
+									: "transparent"
+								border.color: filled ? "black" : "#cccccc"
+								border.width: 2
+								MouseArea {
+									anchors.fill: parent
+									enabled: parent.filled
+									onClicked: {
+										var picked = colorSelector.favouriteColors[index].rgb >>> 0;
+										colorSelector.rgbValue = picked;
+										root.penColorSelected(picked, Line.ArgbCode);
+										colorSelector.recordPick(picked);
+									}
+									onPressAndHold: {
+										if (!parent.filled) return;
+										var entry = colorSelector.favouriteColors[index];
+										nameDisplayPopup.swatchRgb = entry.rgb >>> 0;
+										nameDisplayPopup.swatchName = entry.name || "";
+										nameDisplayPopup.isFavourite = true;
+										nameDisplayPopup.open();
+									}
+								}
+							}
+						}
 					}
-					MouseArea {
-						anchors.fill: parent
-						onClicked: wheelPopup.open()
+
+					Row {
+						spacing: 4
+						Repeater {
+							model: 15
+							delegate: Rectangle {
+								width: 30
+								height: 30
+								radius: 4
+								property int slotIdx: index + 15
+								property bool filled: colorSelector.favouriteColors.length > slotIdx
+								color: filled
+									? Qt.color("#" + (((colorSelector.favouriteColors[slotIdx].rgb) >>> 0).toString(16)).slice(2))
+									: "transparent"
+								border.color: filled ? "black" : "#cccccc"
+								border.width: 2
+								MouseArea {
+									anchors.fill: parent
+									enabled: parent.filled
+									onClicked: {
+										var picked = colorSelector.favouriteColors[parent.slotIdx].rgb >>> 0;
+										colorSelector.rgbValue = picked;
+										root.penColorSelected(picked, Line.ArgbCode);
+										colorSelector.recordPick(picked);
+									}
+									onPressAndHold: {
+										if (!parent.filled) return;
+										var entry = colorSelector.favouriteColors[parent.slotIdx];
+										nameDisplayPopup.swatchRgb = entry.rgb >>> 0;
+										nameDisplayPopup.swatchName = entry.name || "";
+										nameDisplayPopup.isFavourite = true;
+										nameDisplayPopup.open();
+									}
+								}
+							}
+						}
 					}
 				}
 			}
 
 			Rectangle {
-				anchors.top: presetRow.bottom
+				anchors.top: blocksRow.bottom
 				anchors.left: parent.left
 				anchors.right: parent.right
 				anchors.bottom: parent.bottom
-				anchors.topMargin: 16
+				anchors.topMargin: 14
 				color: "white"
 				border.color: Qt.color("#" + (colorSelector.rgbValue >>> 0).toString(16))
-				border.width: 20
+				border.width: 14
 				antialiasing: root.antialiasing
 
 				TextInput {
+					id: hexInput
 					anchors.centerIn: parent
 					font.pointSize: 28
 					color: "black"
@@ -161,6 +358,54 @@ INSERT {
 						if (!visible && activeFocus) {
 							focus = false;
 							Qt.inputMethod.hide();
+						}
+					}
+				}
+
+				Canvas {
+					id: starCanvas
+					width: 36
+					height: 36
+					anchors.right: parent.right
+					anchors.verticalCenter: parent.verticalCenter
+					anchors.rightMargin: 28
+					antialiasing: true
+					property bool filled: colorSelector.isFavourited(colorSelector.rgbValue)
+					onFilledChanged: requestPaint()
+					onWidthChanged: requestPaint()
+					onHeightChanged: requestPaint()
+					onPaint: {
+						var ctx = getContext("2d");
+						ctx.clearRect(0, 0, width, height);
+						var cx = width / 2;
+						var cy = height / 2;
+						var rOuter = Math.min(width, height) / 2 - 1;
+						var rInner = rOuter * 0.42;
+						ctx.beginPath();
+						for (var i = 0; i < 10; ++i) {
+							var ang = -Math.PI / 2 + i * Math.PI / 5;
+							var r = (i % 2 === 0) ? rOuter : rInner;
+							var px = cx + Math.cos(ang) * r;
+							var py = cy + Math.sin(ang) * r;
+							if (i === 0) ctx.moveTo(px, py);
+							else ctx.lineTo(px, py);
+						}
+						ctx.closePath();
+						if (filled) {
+							ctx.fillStyle = "black";
+							ctx.fill();
+						}
+						ctx.lineWidth = 2;
+						ctx.strokeStyle = "black";
+						ctx.stroke();
+					}
+					MouseArea {
+						anchors.fill: parent
+						onClicked: {
+							if (colorSelector.isFavourited(colorSelector.rgbValue)) return;
+							namePromptPopup.pendingRgb = colorSelector.rgbValue;
+							namePromptPopup.naming = false;
+							namePromptPopup.open();
 						}
 					}
 				}
@@ -322,6 +567,381 @@ INSERT {
 							root.penColorSelected(colorSelector.rgbValue, Line.ArgbCode);
 							mode = "";
 							wheelPopup.close();
+						}
+					}
+				}
+			}
+		}
+
+		Popup {
+			id: namePromptPopup
+			modal: true
+			closePolicy: Popup.CloseOnEscape
+			parent: Overlay.overlay
+			x: (parent ? parent.width : 0) / 2 - width / 2
+			y: (parent ? parent.height : 0) / 2 - height / 2
+			width: 460
+			height: promptCol.implicitHeight + padding * 2
+			padding: 18
+			background: Rectangle {
+				color: "white"
+				border.color: "black"
+				border.width: 2
+				radius: 6
+			}
+			property int pendingRgb: 0
+			property bool naming: false
+
+			onOpened: {
+				naming = false;
+				nameField.text = "";
+			}
+			onClosed: {
+				if (nameField.activeFocus) {
+					nameField.focus = false;
+				}
+				Qt.inputMethod.hide();
+			}
+
+			contentItem: Column {
+				id: promptCol
+				spacing: 16
+
+					Row {
+						spacing: 12
+						anchors.horizontalCenter: parent.horizontalCenter
+						Rectangle {
+							width: 36
+							height: 36
+							radius: 4
+							border.color: "black"
+							border.width: 2
+							color: Qt.color("#" + (namePromptPopup.pendingRgb >>> 0).toString(16))
+						}
+						Text {
+							anchors.verticalCenter: parent.verticalCenter
+							text: namePromptPopup.naming ? "Name this colour:" : "Name this colour?"
+							font.pointSize: 18
+							color: "black"
+						}
+					}
+
+					Row {
+						visible: !namePromptPopup.naming
+						spacing: 14
+						anchors.horizontalCenter: parent.horizontalCenter
+						Rectangle {
+							width: 130; height: 56; radius: 6
+							border.color: "black"; border.width: 2
+							color: "white"
+							Text {
+								anchors.centerIn: parent
+								text: "Yes"
+								font.pointSize: 18
+								color: "black"
+							}
+							MouseArea {
+								anchors.fill: parent
+								onClicked: {
+									namePromptPopup.naming = true;
+									nameField.forceActiveFocus();
+									Qt.inputMethod.show();
+								}
+							}
+						}
+						Rectangle {
+							width: 200; height: 56; radius: 6
+							border.color: "black"; border.width: 2
+							color: "white"
+							Text {
+								anchors.centerIn: parent
+								text: "No, just save"
+								font.pointSize: 18
+								color: "black"
+							}
+							MouseArea {
+								anchors.fill: parent
+								onClicked: {
+									colorSelector.addFavourite(namePromptPopup.pendingRgb, "");
+									namePromptPopup.close();
+								}
+							}
+						}
+					}
+
+					Rectangle {
+						visible: namePromptPopup.naming
+						width: 400; height: 60
+						anchors.horizontalCenter: parent.horizontalCenter
+						border.color: "black"; border.width: 2
+						color: "white"
+						radius: 4
+						TextInput {
+							id: nameField
+							anchors.fill: parent
+							anchors.margins: 10
+							font.pointSize: 20
+							color: "black"
+							clip: true
+							onAccepted: {
+								colorSelector.addFavourite(namePromptPopup.pendingRgb, text);
+								namePromptPopup.close();
+							}
+						}
+					}
+
+					Row {
+						visible: namePromptPopup.naming
+						spacing: 14
+						anchors.horizontalCenter: parent.horizontalCenter
+						Rectangle {
+							width: 130; height: 56; radius: 6
+							border.color: "black"; border.width: 2
+							color: "white"
+							Text {
+								anchors.centerIn: parent
+								text: "Save"
+								font.pointSize: 18
+								color: "black"
+							}
+							MouseArea {
+								anchors.fill: parent
+								onClicked: {
+									colorSelector.addFavourite(namePromptPopup.pendingRgb, nameField.text);
+									namePromptPopup.close();
+								}
+							}
+						}
+						Rectangle {
+							width: 130; height: 56; radius: 6
+							border.color: "black"; border.width: 2
+							color: "white"
+							Text {
+								anchors.centerIn: parent
+								text: "Cancel"
+								font.pointSize: 18
+								color: "black"
+							}
+							MouseArea {
+								anchors.fill: parent
+								onClicked: namePromptPopup.close()
+							}
+						}
+					}
+				}
+		}
+
+		Popup {
+			id: nameDisplayPopup
+			modal: true
+			parent: Overlay.overlay
+			x: (parent ? parent.width : 0) / 2 - width / 2
+			y: (parent ? parent.height : 0) / 2 - height / 2
+			width: 300
+			height: nameCol.implicitHeight + padding * 2
+			padding: 16
+			background: Rectangle {
+				color: "white"
+				border.color: "black"
+				border.width: 2
+				radius: 6
+			}
+			property int swatchRgb: 0
+			property string swatchName: ""
+			property bool isFavourite: false
+
+			contentItem: Item {
+
+				Rectangle {
+					id: closeButton
+					width: 36; height: 36; radius: 4
+					anchors.top: parent.top
+					anchors.right: parent.right
+					border.color: "black"; border.width: 2
+					color: "white"
+					Text {
+						anchors.centerIn: parent
+						text: "X"
+						font.pointSize: 16
+						color: "black"
+					}
+					MouseArea {
+						anchors.fill: parent
+						onClicked: nameDisplayPopup.close()
+					}
+				}
+
+				Column {
+					id: nameCol
+					anchors.top: parent.top
+					anchors.horizontalCenter: parent.horizontalCenter
+					spacing: 10
+
+					Rectangle {
+						width: 48; height: 48; radius: 4
+						anchors.horizontalCenter: parent.horizontalCenter
+						border.color: "black"; border.width: 2
+						color: Qt.color("#" + (nameDisplayPopup.swatchRgb >>> 0).toString(16))
+					}
+					Text {
+						anchors.horizontalCenter: parent.horizontalCenter
+						text: nameDisplayPopup.swatchName.length > 0
+							? nameDisplayPopup.swatchName
+							: "(unnamed)"
+						font.pointSize: 20
+						color: "black"
+						wrapMode: Text.Wrap
+						horizontalAlignment: Text.AlignHCenter
+					}
+					Text {
+						anchors.horizontalCenter: parent.horizontalCenter
+						text: "#" + ("00000000" + (nameDisplayPopup.swatchRgb >>> 0).toString(16).toUpperCase()).slice(-8)
+						font.pointSize: 13
+						color: "#666666"
+					}
+
+					Rectangle {
+						visible: nameDisplayPopup.isFavourite
+						width: 56; height: 56; radius: 6
+						anchors.horizontalCenter: parent.horizontalCenter
+						border.color: "black"; border.width: 2
+						color: "white"
+						Canvas {
+							id: trashCanvas
+							anchors.fill: parent
+							anchors.margins: 10
+							antialiasing: true
+							onWidthChanged: requestPaint()
+							onHeightChanged: requestPaint()
+							onPaint: {
+								var ctx = getContext("2d");
+								ctx.clearRect(0, 0, width, height);
+								ctx.lineWidth = 2;
+								ctx.strokeStyle = "black";
+								ctx.lineJoin = "round";
+								var lidY = height * 0.20;
+								var lidH = height * 0.10;
+								var bodyY = lidY + lidH + 2;
+								var bodyH = height - bodyY - 2;
+								var bodyX = width * 0.18;
+								var bodyW = width * 0.64;
+								ctx.beginPath();
+								ctx.rect(width * 0.38, height * 0.08, width * 0.24, height * 0.12);
+								ctx.stroke();
+								ctx.beginPath();
+								ctx.rect(width * 0.08, lidY, width * 0.84, lidH);
+								ctx.stroke();
+								ctx.beginPath();
+								ctx.moveTo(bodyX, bodyY);
+								ctx.lineTo(bodyX + bodyW, bodyY);
+								ctx.lineTo(bodyX + bodyW * 0.92, bodyY + bodyH);
+								ctx.lineTo(bodyX + bodyW * 0.08, bodyY + bodyH);
+								ctx.closePath();
+								ctx.stroke();
+								for (var i = 1; i <= 3; ++i) {
+									var lx = bodyX + bodyW * (i / 4);
+									ctx.beginPath();
+									ctx.moveTo(lx, bodyY + bodyH * 0.15);
+									ctx.lineTo(lx, bodyY + bodyH * 0.85);
+									ctx.stroke();
+								}
+							}
+						}
+						MouseArea {
+							anchors.fill: parent
+							onClicked: {
+								removeConfirmPopup.pendingRgb = nameDisplayPopup.swatchRgb;
+								removeConfirmPopup.pendingName = nameDisplayPopup.swatchName;
+								removeConfirmPopup.open();
+							}
+						}
+					}
+				}
+			}
+		}
+
+		Popup {
+			id: removeConfirmPopup
+			modal: true
+			parent: Overlay.overlay
+			x: (parent ? parent.width : 0) / 2 - width / 2
+			y: (parent ? parent.height : 0) / 2 - height / 2
+			width: 400
+			height: removeCol.implicitHeight + padding * 2
+			padding: 18
+			background: Rectangle {
+				color: "white"
+				border.color: "black"
+				border.width: 2
+				radius: 6
+			}
+			property int pendingRgb: 0
+			property string pendingName: ""
+
+			contentItem: Column {
+				id: removeCol
+				spacing: 18
+
+				Text {
+					anchors.horizontalCenter: parent.horizontalCenter
+					text: "Remove this favourite?"
+					font.pointSize: 18
+					color: "black"
+				}
+
+				Row {
+					spacing: 14
+					anchors.horizontalCenter: parent.horizontalCenter
+					Rectangle {
+						width: 36; height: 36; radius: 4
+						border.color: "black"; border.width: 2
+						color: Qt.color("#" + (removeConfirmPopup.pendingRgb >>> 0).toString(16))
+					}
+					Text {
+						anchors.verticalCenter: parent.verticalCenter
+						text: removeConfirmPopup.pendingName.length > 0
+							? removeConfirmPopup.pendingName
+							: "(unnamed)"
+						font.pointSize: 16
+						color: "black"
+					}
+				}
+
+				Row {
+					spacing: 14
+					anchors.horizontalCenter: parent.horizontalCenter
+					Rectangle {
+						width: 130; height: 56; radius: 6
+						border.color: "black"; border.width: 2
+						color: "white"
+						Text {
+							anchors.centerIn: parent
+							text: "Yes, remove"
+							font.pointSize: 16
+							color: "black"
+						}
+						MouseArea {
+							anchors.fill: parent
+							onClicked: {
+								colorSelector.removeFavourite(removeConfirmPopup.pendingRgb);
+								removeConfirmPopup.close();
+								nameDisplayPopup.close();
+							}
+						}
+					}
+					Rectangle {
+						width: 130; height: 56; radius: 6
+						border.color: "black"; border.width: 2
+						color: "white"
+						Text {
+							anchors.centerIn: parent
+							text: "Cancel"
+							font.pointSize: 16
+							color: "black"
+						}
+						MouseArea {
+							anchors.fill: parent
+							onClicked: removeConfirmPopup.close()
 						}
 					}
 				}

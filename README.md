@@ -2,23 +2,27 @@
 
 A xovi/qt-resource-rebuilder distribution that adds a free-form hex-ARGB
 colour picker to xochitl's pen menus on reMarkable Paper Pro (firmware
-3.26.0.68, both 11.8" ferrari and 7.3" Move porsche).
+3.26.0.68). v2.3 targets the 11.8" Ferrari layout — Porsche compatibility
+not yet retested with the wider grid.
 
 ## What you get
 
 Open any notebook → tap a pen → look for **"Pick custom color"** in the
-colour menu. Three ways to pick:
+colour menu. The picker is two side-by-side blocks above a hex field:
 
-- **Tap a recent swatch** — the top row shows your 8 most recent
-  picks, seeded on first run with brown, tan, salmon, coral, sky,
-  indigo, olive, teal. One tap, no drag.
-- **Tap the rainbow swatch at the end of the row** — opens an HSV
-  colour wheel overlay. Drag on the hue ring to set hue; drag in the
-  inner square for saturation (left→right) and value (top→bottom).
-  Release commits the pick, closes the overlay, and prepends it to
-  recents.
-- **Type a hex `AARRGGBB`** in the field — e.g. `FF8B4513` for saddle
-  brown. Must be 8 hex digits (alpha first).
+- **Recents** (left, 4+5 staggered): your 8 most recent picks plus a
+  rainbow swatch at the end of row 2. Seeded on first run with brown,
+  tan, salmon, coral, sky, indigo, olive, teal. Each pick (recent tap,
+  hex entry, wheel commit, or favourite tap) prepends to the list.
+- **Favourites** (right, 15×2 = 30 slots): hand-curated palette. Tap
+  the **★** button beside the hex field to add the current colour;
+  you'll be asked whether to name it. Press-and-hold any swatch to see
+  its name and (for favourites) a trash button → confirm to remove.
+  Persists across documents and restarts.
+- **Rainbow swatch → HSV wheel**: drag the hue ring; drag the inner
+  square for saturation (←→) and value (↑↓). Release commits.
+- **Hex `AARRGGBB`** in the field — 8 hex digits, alpha first
+  (e.g. `FF8B4513` for saddle brown).
 
 Backed by xochitl's ARGB(9) wildcard colour: highlighter and shader
 strokes record `color_rgba=(R,G,B,A)` and the rasterizer renders them
@@ -97,15 +101,32 @@ re-validation.
 Full project decision log + slave reports + v1-broken history live
 in `MASTER.md` and `SLAVE-*.md`.
 
+## Persistence
+
+Two JSON files in `/home/root/`:
+
+- `.freeColour-recent.json` — `{recent: [argb, ...]}`, capacity 8.
+- `.freeColour-favourites.json` — `{favourites: [{rgb, name}, ...]}`,
+  capacity 30 (FIFO; oldest drops when you favourite the 31st).
+
+Both are written via XHR PUT on every change and survive xochitl
+restarts and reboots.
+
 ## Roadmap
 
 - **v1.0** ✓ — ship ingatellent's working pair.
 - **v1.1** ✓ — preset palette + neutral default.
 - **v1.2** ✓ — persistent recents row above the hex field.
 - **v2.0** ✓ — HSV colour wheel replaces hex typing.
-- **v2.1** — pre-seed `quickTool.json` with a brown highlighter slot
+- **v2.3** ✓ — favourites grid (15×2) with star-to-add, name-prompt,
+  long-press-to-view-name, trash-to-remove. Side-by-side recents +
+  favourites blocks; Canvas-painted star (rMPP font lacks ★/☆).
+- **v2.4** — Porsche layout fork. The current 800-px-wide picker won't
+  fit the narrower Move pen menu; needs a separate compile target with
+  smaller swatches or fewer favourite columns.
+- **v2.5** — pre-seed `quickTool.json` with a brown highlighter slot
   for one-tap access from the floating toolbar.
-- **v2.2** — re-test "any pen can be a shader" claim on solid pens
+- **v2.6** — re-test "any pen can be a shader" claim on solid pens
   now that the picker forces ARGB tagging. May unlock free-form RGB
   on every pen, not just highlighter/shader.
 
